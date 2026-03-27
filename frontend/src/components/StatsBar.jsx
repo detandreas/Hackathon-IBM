@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { greecePatches } from "../data/greeceData";
 import { IconMap, IconBarChart, IconAlert, IconRefresh } from "./Icons";
+import { apiUrl } from "../api";
 
 const DEFAULT_STATS = {
   total_snapshots: 200,
@@ -19,7 +20,7 @@ export default function StatsBar({ refreshTrigger }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch("/api/stats");
+      const res = await fetch(apiUrl("/api/stats"));
       const data = await res.json();
       setStats({ ...DEFAULT_STATS, ...data });
     } catch {

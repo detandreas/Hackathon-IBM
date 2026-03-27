@@ -69,9 +69,16 @@ app = FastAPI(
     version="2.0.0",
 )
 
+cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+if cors_origins_env.strip():
+    allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+else:
+    # Backward-compatible default for local/dev and single-domain demos.
+    allow_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -7,6 +7,7 @@ import StatsBar from "./StatsBar";
 import PortfolioUploader from "./PortfolioUploader";
 import HistoryDrawer from "./HistoryDrawer";
 import { greecePatches } from "../data/greeceData";
+import { apiUrl } from "../api";
 
 // ── Priority Queue panel ───────────────────────────────────────────────────────
 function PriorityQueue({ onAssess, onClose, top5, criticalCount }) {
@@ -183,8 +184,8 @@ export default function AppPage() {
     async function loadData() {
       try {
         const [regionsRes, healthRes] = await Promise.all([
-          fetch("/api/regions"),
-          fetch("/api/health"),
+          fetch(apiUrl("/api/regions")),
+          fetch(apiUrl("/api/health")),
         ]);
 
         if (!cancelled && healthRes.ok) {

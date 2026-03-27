@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { getRiskColor } from "../data/greeceData";
+import { apiUrl } from "../api";
 
 const TIER_CONFIG = {
   CRITICAL: { color: "#EF4444", bg: "rgba(239,68,68,0.15)", label: "CRITICAL" },
@@ -304,7 +305,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
   async function fetchScore() {
     setAiLoading(true);
     try {
-      const res = await fetch("/api/score", {
+      const res = await fetch(apiUrl("/api/score"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat: patch.lat, lon: patch.lon, area_name: patch.name }),
@@ -325,7 +326,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
   async function handleFeedback(action) {
     setFeedbackSubmitting(true);
     try {
-      await fetch("/api/feedback", {
+      await fetch(apiUrl("/api/feedback"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -354,7 +355,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
       snapshot_id: snapshotIdRef.current || patch.id,
     });
     const link = document.createElement("a");
-    link.href = `/api/report/pdf?${params}`;
+    link.href = apiUrl(`/api/report/pdf?${params}`);
     link.download = `earthrisk-${patch.name.replace(/\s+/g, "-")}.pdf`;
     document.body.appendChild(link);
     link.click();

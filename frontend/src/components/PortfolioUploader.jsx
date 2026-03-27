@@ -7,6 +7,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { apiUrl } from "../api";
 
 const PIE_COLORS = {
   critical: "#EF4444",
@@ -119,7 +120,7 @@ export default function PortfolioUploader({ onAssetsLoaded, open: externalOpen, 
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/assets/upload", { method: "POST", body: formData });
+      const res = await fetch(apiUrl("/api/assets/upload"), { method: "POST", body: formData });
       const data = await res.json();
 
       if (data.features) {
@@ -176,7 +177,7 @@ export default function PortfolioUploader({ onAssetsLoaded, open: externalOpen, 
         snapshot_id: `portfolio-${Date.now()}`,
       });
       const link = document.createElement("a");
-      link.href = `/api/report/pdf?${params}`;
+      link.href = apiUrl(`/api/report/pdf?${params}`);
       link.download = "earthrisk-portfolio-report.pdf";
       document.body.appendChild(link);
       link.click();

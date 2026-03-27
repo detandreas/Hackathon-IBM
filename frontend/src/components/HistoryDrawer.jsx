@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { IconCheck, IconPencil, IconClose } from "./Icons";
+import { apiUrl } from "../api";
 
 const TIER_COLORS = {
   CRITICAL: "#EF4444",
@@ -34,7 +35,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
   async function fetchHistory() {
     setLoading(true);
     try {
-      const res = await fetch("/api/history");
+      const res = await fetch(apiUrl("/api/history"));
       const data = await res.json();
       setHistory(data.snapshots || data || []);
     } catch {
