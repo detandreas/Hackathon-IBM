@@ -845,7 +845,7 @@ def generate_pdf_report(
     pdf.ln()
 
     for j, row_data in enumerate(data):
-        pdf.set_fill_color(18, 26, 44 if j % 2 == 0 else 22, 33, 56)
+        pdf.set_fill_color(*(18, 26, 44) if j % 2 == 0 else (22, 33, 56))
         pdf.set_text_color(200, 210, 230)
         pdf.set_font("Helvetica", "", 9)
         for i, cell in enumerate(row_data):
