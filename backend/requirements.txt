@@ -1,11 +1,11 @@
 # ── Web API ──────────────────────────────────
-fastapi==0.110.0
-uvicorn[standard]==0.27.1
-fpdf2==2.7.9
-openai==1.14.0
-python-multipart==0.0.9
-aiofiles==23.2.1
-pydantic==2.6.3
+fastapi>=0.115
+uvicorn[standard]>=0.32
+fpdf2>=2.8
+openai>=1.14
+python-multipart>=0.0.9
+aiofiles>=23.2
+pydantic>=2.10
 
 # ── Data pipeline ────────────────────────────
 pandas>=2.2

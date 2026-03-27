@@ -6,8 +6,6 @@ import {
   Tooltip, ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
-import { getRiskColor } from "../data/greeceData";
-
 const TIER_CONFIG = {
   CRITICAL: { color: "#EF4444", bg: "rgba(239,68,68,0.15)", label: "CRITICAL" },
   HIGH:     { color: "#F59E0B", bg: "rgba(245,158,11,0.15)", label: "HIGH" },
