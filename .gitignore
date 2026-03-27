@@ -6,6 +6,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Pickle files & model artifacts (trained models)
+*.pkl
+models/
+
 # Virtual environments
 .venv/
 venv/
