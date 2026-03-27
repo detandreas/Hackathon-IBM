@@ -241,7 +241,7 @@ function ChangeDetectionTab({ patch, config }) {
       </div>
 
       {/* Year summary cards */}
-      <div className="grid grid-cols-5 gap-1.5 mt-4">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mt-4">
         {data.map((d) => (
           <div
             key={d.year}
@@ -294,15 +294,12 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
 
   useEffect(() => {
     if (!patch) return;
-    setVisible(false);
     setAiSummary("");
     setBackendData(null);
     setOverrideOpen(false);
     setActiveTab("overview");
     snapshotIdRef.current = null;
-    const t = setTimeout(() => setVisible(true), 10);
     fetchScore();
-    return () => clearTimeout(t);
   }, [patch?.id]);
 
   async function fetchScore() {
@@ -396,11 +393,11 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
     <>
       <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onClose} />
 
+      {/* Desktop (≥768px): Right sidebar | Tablet (375-768px): Bottom sheet | Phone (<375px): Full screen */}
       <div
-        className={`fixed z-40 flex flex-col transition-transform duration-500 ease-out
-          bottom-0 left-0 right-0 w-full max-h-[90vh]
-          md:right-0 md:top-0 md:bottom-0 md:left-auto md:w-[400px] md:h-screen
-          ${visible ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full"}`}
+        className={`fixed z-40 flex flex-col transition-all duration-500 ease-out
+          w-full h-screen sm:w-full sm:h-auto sm:bottom-0 sm:left-0 sm:right-0 sm:max-h-[65vh] md:h-screen md:right-0 md:top-0 md:bottom-0 md:w-[400px]
+          ${visible ? "translate-y-0 sm:translate-y-0 md:translate-x-0" : "translate-y-full sm:translate-y-full md:translate-x-full"}`}
         style={{
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
           borderLeft: "1px solid rgba(0,212,170,0.15)",
@@ -410,7 +407,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
         }}
       >
         {/* Drag handle for bottom sheet (mobile only) */}
-        <div className="md:hidden flex justify-center py-2">
+        <div className="sm:block md:hidden flex justify-center py-2">
           <div className="w-12 h-1 bg-white/20 rounded-full" />
         </div>
         {/* Toast */}
@@ -508,7 +505,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 py-2.5 text-xs font-semibold transition-all ${tab.id === "change-detection" ? "hidden md:flex" : "flex"}`}
+                className={`flex-1 py-2.5 text-xs font-semibold transition-all ${tab.id === "change-detection" ? "hidden sm:flex" : "flex"}`}
                 style={{
                   color: activeTab === tab.id ? "#00D4AA" : "rgba(255,255,255,0.35)",
                   borderBottom: activeTab === tab.id ? "2px solid #00D4AA" : "2px solid transparent",
