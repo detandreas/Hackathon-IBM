@@ -396,7 +396,8 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
       {/* Desktop (≥768px): Right sidebar | Tablet (375-768px): Bottom sheet | Phone (<375px): Full screen */}
       <div
         className={`fixed z-40 flex flex-col transition-all duration-500 ease-out
-          w-full h-screen sm:w-full sm:h-auto sm:bottom-0 sm:left-0 sm:right-0 sm:max-h-[65vh] md:h-screen md:right-0 md:top-0 md:bottom-0 md:w-[400px]
+          w-full h-screen bottom-0 left-0 right-0 sm:h-auto sm:max-h-[65vh]
+          md:h-screen md:right-0 md:top-0 md:bottom-0 md:left-auto md:w-[400px]
           ${visible ? "translate-y-0 sm:translate-y-0 md:translate-x-0" : "translate-y-full sm:translate-y-full md:translate-x-full"}`}
         style={{
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
