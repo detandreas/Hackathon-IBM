@@ -9,14 +9,6 @@ const TIER_COLORS = {
   LOW: "#00D4AA",
 };
 
-const MOCK_HISTORY = [
-  { id: "snap-001", area_name: "Evia Central Ridge", score: 87, tier: "CRITICAL", created_at: "2026-03-27T10:22:00Z", action: "agree" },
-  { id: "snap-002", area_name: "Rhodes Old Town", score: 91, tier: "CRITICAL", created_at: "2026-03-27T09:45:00Z", action: "override" },
-  { id: "snap-003", area_name: "Karditsa Valley", score: 72, tier: "HIGH", created_at: "2026-03-26T16:30:00Z", action: "agree" },
-  { id: "snap-004", area_name: "Mytilene Capital", score: 48, tier: "MEDIUM", created_at: "2026-03-26T14:10:00Z", action: null },
-  { id: "snap-005", area_name: "Thessaloniki Port", score: 18, tier: "LOW", created_at: "2026-03-25T11:00:00Z", action: "agree" },
-];
-
 function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
@@ -27,6 +19,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (open) fetchHistory();
@@ -34,20 +27,21 @@ export default function HistoryDrawer({ refreshTrigger }) {
 
   async function fetchHistory() {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch(apiUrl("/api/history"));
       const data = await res.json();
       setHistory(data.snapshots || data || []);
     } catch {
-      setHistory(MOCK_HISTORY);
+      setHistory([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }
 
-  const displayHistory = history.length > 0 ? history : MOCK_HISTORY;
-  const firstDate = displayHistory.length > 0
-    ? new Date(displayHistory[displayHistory.length - 1].created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+  const firstDate = history.length > 0
+    ? new Date(history[history.length - 1].created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "N/A";
 
   return (
@@ -71,7 +65,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
           className="text-xs px-2 py-0.5 rounded-full font-bold"
           style={{ background: "rgba(0,212,170,0.2)", color: "#00D4AA" }}
         >
-          {displayHistory.length}
+          {history.length}
         </span>
       </button>
 
@@ -108,7 +102,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
               className="text-xs px-3 py-1 rounded-full"
               style={{ background: "rgba(0,212,170,0.1)", color: "#00D4AA", border: "1px solid rgba(0,212,170,0.2)" }}
             >
-              {displayHistory.length} snapshots
+              {history.length} snapshots
             </div>
             <button
               onClick={() => setOpen(false)}
@@ -125,6 +119,14 @@ export default function HistoryDrawer({ refreshTrigger }) {
             <div className="flex items-center justify-center py-12 text-white/40 text-sm animate-pulse">
               Loading archive…
             </div>
+          ) : loadError ? (
+            <div className="flex items-center justify-center py-12 text-white/40 text-sm">
+              Failed to load archive from backend.
+            </div>
+          ) : history.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-white/40 text-sm">
+              No real risk snapshots yet. Run an assessment to populate the archive.
+            </div>
           ) : (
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ background: "rgba(8,12,24,0.95)" }}>
@@ -137,7 +139,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
                 </tr>
               </thead>
               <tbody>
-                {displayHistory.map((snap, i) => {
+                {history.map((snap, i) => {
                   const tier = snap.tier || (snap.score >= 76 ? "CRITICAL" : snap.score >= 51 ? "HIGH" : snap.score >= 26 ? "MEDIUM" : "LOW");
                   const color = TIER_COLORS[tier] || "#00D4AA";
                   return (
