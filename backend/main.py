@@ -886,7 +886,8 @@ def generate_pdf_report(
              f"EarthRisk AI v2.0  ·  Snapshot ID: {snapshot_id}  ·  Regulatory Audit Trail  ·  IBM Hackathon 2026",
              align="C")
 
-    pdf_bytes = bytes(pdf.output())
+    pdf_output = pdf.output()
+    pdf_bytes = pdf_output.encode('latin-1') if isinstance(pdf_output, str) else pdf_output
     filename = f"earthrisk-{area_name.replace(' ', '-').lower()}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
