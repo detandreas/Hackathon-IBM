@@ -139,6 +139,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
   const [geoLoading, setGeoLoading] = useState(true);
   const [pulseScale, setPulseScale] = useState(1);
   const [mapMode, setMapMode] = useState("standard"); // standard | heatmap | satellite
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pulseRef = useRef(null);
 
   // ── Fetch Greece GeoJSON ─────────────────────────────────────────────────────
@@ -433,9 +434,141 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
       {/* Hover tooltip */}
       {hoverInfo && hoverInfo.object && <MapTooltip info={hoverInfo} />}
 
-      {/* ── Map Mode Toggle ────────────────────────────────────────────────── */}
+      {/* ── Hamburger Menu (Mobile Only) ────────────────────────────────── */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="sm:hidden absolute top-4 left-4 w-11 h-11 rounded-lg z-20 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+        style={{
+          background: "rgba(8,12,26,0.90)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          backdropFilter: "blur(10px)",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+        }}
+        aria-label="Toggle map menu"
+      >
+        <div className="flex flex-col gap-1.5 w-5">
+          <div className={`h-0.5 bg-white/70 transition-all ${mobileMenuOpen ? 'w-5 rotate-45 translate-y-2' : 'w-5'}`} />
+          <div className={`h-0.5 bg-white/70 transition-all ${mobileMenuOpen ? 'opacity-0' : 'w-5'}`} />
+          <div className={`h-0.5 bg-white/70 transition-all ${mobileMenuOpen ? 'w-5 -rotate-45 -translate-y-2' : 'w-5'}`} />
+        </div>
+      </button>
+
+      {/* ── Mobile Menu Drawer ─────────────────────────────────────────── */}
+      {mobileMenuOpen && (
+        <div
+          className="sm:hidden absolute inset-0 z-15 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
       <div
-        className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5 p-1 rounded-xl z-10"
+        className={`sm:hidden absolute top-0 left-0 h-full w-64 z-20 transition-transform duration-300 flex flex-col gap-3 p-4 overflow-y-auto ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{
+          background: "rgba(8,12,26,0.95)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <div className="h-12" /> {/* Spacer for hamburger button */}
+
+        {/* ── Map Mode Toggle (Mobile) ────────────────────────────────── */}
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-semibold text-white/40 uppercase tracking-wide">Map Mode</div>
+          <div className="flex flex-col gap-1.5">
+            <ModeButton
+              label="Standard"
+              icon={<IconGrid size={12} />}
+              active={mapMode === "standard"}
+              onClick={() => {
+                setMapMode("standard");
+                setMobileMenuOpen(false);
+              }}
+            />
+            <ModeButton
+              label="Risk Heat"
+              icon={<IconHexagon size={12} />}
+              active={mapMode === "heatmap"}
+              onClick={() => {
+                setMapMode("heatmap");
+                setMobileMenuOpen(false);
+              }}
+            />
+            <ModeButton
+              label="Satellite"
+              icon={<IconSatellite size={12} />}
+              active={mapMode === "satellite"}
+              onClick={() => {
+                setMapMode("satellite");
+                setMobileMenuOpen(false);
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-white/10" />
+
+        {/* ── Zoom Controls (Mobile) ─────────────────────────────────── */}
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-semibold text-white/40 uppercase tracking-wide">Navigation</div>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "+", fn: zoomIn, title: "Zoom in" },
+              { label: "−", fn: zoomOut, title: "Zoom out" },
+              { label: "⌂", fn: resetView, title: "Reset view" },
+              { label: "3D", fn: tiltToggle, title: "Toggle 3D pitch" },
+            ].map(({ label, fn, title }) => (
+              <button
+                key={label}
+                onClick={() => {
+                  fn();
+                  setMobileMenuOpen(false);
+                }}
+                title={title}
+                className="w-full h-11 rounded-lg font-bold text-white/70 hover:text-white transition-all text-base flex items-center justify-center hover:scale-105 active:scale-95"
+                style={{
+                  background: "rgba(22,33,56,0.8)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  backdropFilter: "blur(10px)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-white/10" />
+
+        {/* ── Legend (Mobile) ────────────────────────────────────────── */}
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-semibold text-white/40 uppercase tracking-wide">Risk Level</div>
+          {[
+            { color: "#EF4444", label: "Critical  76–100" },
+            { color: "#F59E0B", label: "High      51–75" },
+            { color: "#EAB308", label: "Medium  26–50" },
+            { color: "#00D4AA", label: "Low        0–25" },
+          ].map(({ color, label }) => (
+            <div key={label} className="flex items-center gap-2">
+              <div
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: color, boxShadow: `0 0 6px ${color}90` }}
+              />
+              <span className="text-white/55 font-mono text-xs">{label}</span>
+            </div>
+          ))}
+          {assetPins.length > 0 && (
+            <div className="border-t border-white/10 mt-2 pt-2 flex items-center gap-2">
+              <div
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: "rgba(255,255,255,0.85)", boxShadow: "0 0 4px rgba(255,255,255,0.5)" }}
+              />
+              <span className="text-white/55 font-mono text-xs">Asset Pin</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Desktop Controls ────────────────────────────────────────────── */}
+      <div className="hidden sm:flex absolute top-4 left-1/2 -translate-x-1/2 gap-1.5 p-1 rounded-xl z-10"
         style={{
           background: "rgba(8,12,26,0.90)",
           border: "1px solid rgba(255,255,255,0.08)",
@@ -463,9 +596,9 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
         />
       </div>
 
-      {/* ── Legend ────────────────────────────────────────────────────────── */}
+      {/* ── Legend (Desktop) ───────────────────────────────────────────── */}
       <div
-        className="absolute bottom-16 left-4 p-3 rounded-xl text-xs z-10"
+        className="hidden sm:flex absolute bottom-16 left-4 p-3 rounded-xl text-xs z-10 flex-col"
         style={{
           background: "rgba(8,12,26,0.88)",
           border: "1px solid rgba(0,212,170,0.18)",
@@ -501,8 +634,8 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
         )}
       </div>
 
-      {/* ── Zoom Controls ─────────────────────────────────────────────────── */}
-      <div className="absolute right-4 bottom-16 flex flex-col gap-1.5 z-10">
+      {/* ── Zoom Controls (Desktop) ────────────────────────────────────── */}
+      <div className="hidden sm:flex absolute right-4 bottom-16 flex-col gap-1.5 z-10">
         {[
           { label: "+", fn: zoomIn, title: "Zoom in" },
           { label: "−", fn: zoomOut, title: "Zoom out" },
@@ -513,7 +646,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
             key={label}
             onClick={fn}
             title={title}
-            className="w-9 h-9 rounded-xl font-bold text-white/70 hover:text-white transition-all text-sm flex items-center justify-center hover:scale-110 active:scale-95"
+            className="w-11 h-11 rounded-xl font-bold text-white/70 hover:text-white transition-all text-sm flex items-center justify-center hover:scale-110 active:scale-95"
             style={{
               background: "rgba(8,12,26,0.88)",
               border: "1px solid rgba(255,255,255,0.1)",
