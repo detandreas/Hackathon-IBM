@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from regions import REGIONS, nearest_region_key
+from api.routes import router as prediction_router
 
 # ─── OpenAI ───────────────────────────────────────────────────────────────────
 try:
@@ -51,6 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include prediction API routes
+app.include_router(prediction_router)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(_HERE, "data", "climate_risk.db"))
