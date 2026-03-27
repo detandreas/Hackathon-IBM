@@ -138,7 +138,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
   const [greeceGeoJson, setGreeceGeoJson] = useState(null);
   const [geoLoading, setGeoLoading] = useState(true);
   const [pulseScale, setPulseScale] = useState(1);
-  const [mapMode, setMapMode] = useState("standard"); // standard | heatmap | satellite
+  const [mapMode, setMapMode] = useState("standard"); // standard | satellite
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pulseRef = useRef(null);
 
@@ -219,48 +219,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
     );
   }
 
-  if (mapMode === "heatmap") {
-    // ── HEATMAP mode: large blurred blobs by score ─────────────────────────
-    // Outer glow layer — very large, very transparent
-    layers.push(
-      new ScatterplotLayer({
-        id: "heat-outer",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 32000,
-        radiusMinPixels: 20,
-        radiusMaxPixels: 80,
-        getFillColor: (d) => [...scoreToRgba(d.score, 0).slice(0, 3), 18],
-        stroked: false,
-        pickable: false,
-      }),
-      new ScatterplotLayer({
-        id: "heat-mid",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 18000,
-        radiusMinPixels: 12,
-        radiusMaxPixels: 55,
-        getFillColor: (d) => [...scoreToRgba(d.score, 0).slice(0, 3), 35],
-        stroked: false,
-        pickable: false,
-      }),
-      new ScatterplotLayer({
-        id: "heat-core",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 8000,
-        radiusMinPixels: 6,
-        radiusMaxPixels: 30,
-        getFillColor: (d) => scoreToRgba(d.score, 140),
-        stroked: false,
-        pickable: true,
-        onClick: (info) => { if (info.object) onPatchClick(info.object); },
-        onHover: (info) => setHoverInfo(info.object ? info : null),
-      })
-    );
-  } else {
-    // ── STANDARD / SATELLITE mode: scatter dots with pulse rings ────────────
+  // ── STANDARD / SATELLITE mode: scatter dots with pulse rings ────────────
     // Pulse rings — CRITICAL
     layers.push(
       new ScatterplotLayer({
@@ -343,7 +302,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
         },
       })
     );
-  }
 
   // Asset → critical zone connection lines
   if (assetLines.length > 0) {
@@ -468,7 +426,18 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
           backdropFilter: "blur(12px)",
         }}
       >
-        <div className="h-12" /> {/* Spacer for hamburger button */}
+        {/* Close button */}
+        <div className="flex justify-end pb-2">
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
         {/* ── Map Mode Toggle (Mobile) ────────────────────────────────── */}
         <div className="flex flex-col gap-2">
@@ -480,15 +449,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
               active={mapMode === "standard"}
               onClick={() => {
                 setMapMode("standard");
-                setMobileMenuOpen(false);
-              }}
-            />
-            <ModeButton
-              label="Risk Heat"
-              icon={<IconHexagon size={12} />}
-              active={mapMode === "heatmap"}
-              onClick={() => {
-                setMapMode("heatmap");
                 setMobileMenuOpen(false);
               }}
             />
@@ -581,12 +541,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
           icon={<IconGrid size={12} />}
           active={mapMode === "standard"}
           onClick={() => setMapMode("standard")}
-        />
-        <ModeButton
-          label="Risk Heat"
-          icon={<IconHexagon size={12} />}
-          active={mapMode === "heatmap"}
-          onClick={() => setMapMode("heatmap")}
         />
         <ModeButton
           label="Satellite"

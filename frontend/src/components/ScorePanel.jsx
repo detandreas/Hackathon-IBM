@@ -285,12 +285,42 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [swipeY, setSwipeY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const snapshotIdRef = useRef(null);
+  const dragStartY = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 10);
     return () => clearTimeout(t);
   }, []);
+
+  // Swipe-to-dismiss handlers (mobile only)
+  const handleTouchStart = (e) => {
+    if (window.innerWidth >= 640) return; // only on mobile
+    dragStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!dragStartY.current || window.innerWidth >= 640) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - dragStartY.current;
+    if (diff > 0) {
+      setSwipeY(diff);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!dragStartY.current) return;
+    dragStartY.current = null;
+    setIsDragging(false);
+    if (swipeY > 80) {
+      onClose();
+    } else {
+      setSwipeY(0);
+    }
+  };
 
   useEffect(() => {
     if (!patch) return;
@@ -406,6 +436,9 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
           boxShadow: "-20px 0 60px rgba(0,0,0,0.6)",
         }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Drag handle for bottom sheet (mobile only) */}
         <div className="sm:block md:hidden flex justify-center py-2">
