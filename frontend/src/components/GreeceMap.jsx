@@ -673,26 +673,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
         N
       </div>
 
-      {/* ── Pitch/zoom HUD ────────────────────────────────────────────────── */}
-      <div
-        className="absolute bottom-4 left-4 px-2.5 py-1.5 rounded-lg z-10 text-[10px] font-mono text-white/40"
-        style={{
-          background: "rgba(8,12,26,0.75)",
-          border: "1px solid rgba(0,212,170,0.1)",
-          backdropFilter: "blur(8px)",
-        }}
-      >
-        <span className="text-[#00D4AA]/70">pitch</span> {Math.round(viewState.pitch)}°
-        <span className="mx-1.5 text-white/20">·</span>
-        <span className="text-[#00D4AA]/70">zoom</span> {viewState.zoom.toFixed(1)}
-        <span className="mx-1.5 text-white/20">·</span>
-        <span className="text-white/30 capitalize">{mapMode}</span>
-      </div>
-
-      {/* Attribution */}
-      <div className="absolute bottom-2 right-4 text-[9px] text-white/15 z-10">
-        © CARTO · © OpenStreetMap · © Esri · EarthRisk AI
-      </div>
 
       {geoLoading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-xs text-[#00D4AA]/60 animate-pulse pointer-events-none">
