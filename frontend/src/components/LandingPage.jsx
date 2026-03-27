@@ -629,7 +629,7 @@ export default function LandingPage() {
         }`}
       >
         {/* Logo Badge */}
-        <div className="flex items-center justify-center gap-3 mb-8">
+        <div className="flex items-center justify-center gap-3 mt-12 sm:mt-0 mb-8">
           <div className="relative">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#00D4AA] to-[#00a882] flex items-center justify-center shadow-lg shadow-[#00D4AA]/30">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
