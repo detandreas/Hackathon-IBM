@@ -138,7 +138,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
   const [greeceGeoJson, setGreeceGeoJson] = useState(null);
   const [geoLoading, setGeoLoading] = useState(true);
   const [pulseScale, setPulseScale] = useState(1);
-  const [mapMode, setMapMode] = useState("standard"); // standard | heatmap | satellite
+  const [mapMode, setMapMode] = useState("standard"); // standard | satellite
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pulseRef = useRef(null);
 
@@ -219,48 +219,7 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
     );
   }
 
-  if (mapMode === "heatmap") {
-    // ── HEATMAP mode: large blurred blobs by score ─────────────────────────
-    // Outer glow layer — very large, very transparent
-    layers.push(
-      new ScatterplotLayer({
-        id: "heat-outer",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 32000,
-        radiusMinPixels: 20,
-        radiusMaxPixels: 80,
-        getFillColor: (d) => [...scoreToRgba(d.score, 0).slice(0, 3), 18],
-        stroked: false,
-        pickable: false,
-      }),
-      new ScatterplotLayer({
-        id: "heat-mid",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 18000,
-        radiusMinPixels: 12,
-        radiusMaxPixels: 55,
-        getFillColor: (d) => [...scoreToRgba(d.score, 0).slice(0, 3), 35],
-        stroked: false,
-        pickable: false,
-      }),
-      new ScatterplotLayer({
-        id: "heat-core",
-        data: patches,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: 8000,
-        radiusMinPixels: 6,
-        radiusMaxPixels: 30,
-        getFillColor: (d) => scoreToRgba(d.score, 140),
-        stroked: false,
-        pickable: true,
-        onClick: (info) => { if (info.object) onPatchClick(info.object); },
-        onHover: (info) => setHoverInfo(info.object ? info : null),
-      })
-    );
-  } else {
-    // ── STANDARD / SATELLITE mode: scatter dots with pulse rings ────────────
+  // ── STANDARD / SATELLITE mode: scatter dots with pulse rings ────────────
     // Pulse rings — CRITICAL
     layers.push(
       new ScatterplotLayer({
@@ -343,7 +302,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
         },
       })
     );
-  }
 
   // Asset → critical zone connection lines
   if (assetLines.length > 0) {
@@ -495,15 +453,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
               }}
             />
             <ModeButton
-              label="Risk Heat"
-              icon={<IconHexagon size={12} />}
-              active={mapMode === "heatmap"}
-              onClick={() => {
-                setMapMode("heatmap");
-                setMobileMenuOpen(false);
-              }}
-            />
-            <ModeButton
               label="Satellite"
               icon={<IconSatellite size={12} />}
               active={mapMode === "satellite"}
@@ -592,12 +541,6 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
           icon={<IconGrid size={12} />}
           active={mapMode === "standard"}
           onClick={() => setMapMode("standard")}
-        />
-        <ModeButton
-          label="Risk Heat"
-          icon={<IconHexagon size={12} />}
-          active={mapMode === "heatmap"}
-          onClick={() => setMapMode("heatmap")}
         />
         <ModeButton
           label="Satellite"
