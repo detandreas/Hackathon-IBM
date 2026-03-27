@@ -32,6 +32,3 @@ htmlcov/
 .env
 .env.*
 
-# Generated data outputs
-data/*.csv
-data/*.parquet
