@@ -398,8 +398,8 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
 
       <div
         className={`fixed z-40 flex flex-col transition-transform duration-500 ease-out
-          bottom-0 left-0 right-0 w-full h-screen
-          md:right-0 md:top-0 md:bottom-0 md:left-auto md:w-[400px] md:h-auto
+          bottom-0 left-0 right-0 w-full max-h-[90vh]
+          md:right-0 md:top-0 md:bottom-0 md:left-auto md:w-[400px] md:h-screen
           ${visible ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full"}`}
         style={{
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
