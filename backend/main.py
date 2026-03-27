@@ -845,7 +845,7 @@ def generate_pdf_report(
     pdf.ln()
 
     for j, row_data in enumerate(data):
-        pdf.set_fill_color(18, 26, 44 if j % 2 == 0 else 22, 33, 56)
+        pdf.set_fill_color(*(18, 26, 44) if j % 2 == 0 else (22, 33, 56))
         pdf.set_text_color(200, 210, 230)
         pdf.set_font("Helvetica", "", 9)
         for i, cell in enumerate(row_data):
@@ -886,7 +886,8 @@ def generate_pdf_report(
              f"EarthRisk AI v2.0  ·  Snapshot ID: {snapshot_id}  ·  Regulatory Audit Trail  ·  IBM Hackathon 2026",
              align="C")
 
-    pdf_bytes = bytes(pdf.output())
+    pdf_output = pdf.output()
+    pdf_bytes = pdf_output.encode('latin-1') if isinstance(pdf_output, str) else pdf_output
     filename = f"earthrisk-{area_name.replace(' ', '-').lower()}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
