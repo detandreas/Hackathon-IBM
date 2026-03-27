@@ -23,28 +23,26 @@ const PLAIN_LANGUAGE = {
   LOW: "Environmental conditions are stable with no significant climate risk signals detected. This zone is suitable for standard insurance products without additional risk loading. Continue monitoring via annual satellite re-assessment.",
 };
 
-// ── Build change detection data from trendData ─────────────────────────────────
-function buildChangeDetectionData(patch, trendData, factors) {
-  const data_source = trendData || patch.trendData;
-  const facs = factors || patch.factors;
-  if (!data_source || data_source.length === 0) return [];
-
-  const byYear = {};
-  data_source.forEach((pt) => {
-    const year = pt.date.slice(0, 4);
-    if (!byYear[year]) byYear[year] = [];
-    byYear[year].push(pt.score);
+// ── Build 5-year change detection data (2021–2025) ────────────────────────────
+function buildChangeDetectionData(patch) {
+  const data = [2021, 2022, 2023, 2024].map((year, yi) => {
+    const months = patch.trendData.slice(yi * 12, (yi + 1) * 12);
+    const avgScore = Math.round(months.reduce((s, m) => s + m.score, 0) / months.length);
+    const ndviDecay = yi * (patch.trend === "rising" ? 4 : patch.trend === "improving" ? -3 : 1);
+    const vegetation = Math.max(10, Math.min(90, Math.round(100 - patch.factors.ndvi_drop - ndviDecay)));
+    const temperature = Math.min(90, Math.round(patch.factors.temp_increase * 14 + yi * (patch.trend === "rising" ? 3.5 : 0.5)));
+    return { year: String(year), score: avgScore, vegetation, temperature, predicted: false };
   });
 
-  const years = Object.keys(byYear).sort();
-  const data = years.map((year, yi) => {
-    const scores = byYear[year];
-    const avgScore = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
-    const ndviDecay = yi * (patch.trend === "rising" ? 3 : patch.trend === "improving" ? -2 : 0.5);
-    const vegetation = Math.max(10, Math.min(90, Math.round(100 - facs.ndvi_drop - ndviDecay)));
-    const temperature = Math.min(90, Math.round(facs.temp_increase * 14 + yi * (patch.trend === "rising" ? 2 : 0.3)));
-    const isLatestYear = yi === years.length - 1;
-    return { year: isLatestYear ? `${year}*` : year, score: avgScore, vegetation, temperature, predicted: isLatestYear };
+  // 2025 — projected
+  const last = data[3];
+  const delta = patch.trend === "rising" ? 8 : patch.trend === "improving" ? -5 : 2;
+  data.push({
+    year: "2025*",
+    score: Math.max(5, Math.min(99, last.score + delta)),
+    vegetation: Math.max(10, Math.min(90, last.vegetation + (patch.trend === "rising" ? -5 : 3))),
+    temperature: Math.max(5, Math.min(90, last.temperature + (patch.trend === "rising" ? 5 : -2))),
+    predicted: true,
   });
 
   return data;
@@ -152,8 +150,8 @@ function WhatDoesItMean({ tier }) {
 }
 
 // ── Change Detection AreaChart tab ────────────────────────────────────────────
-function ChangeDetectionTab({ patch, config, backendData }) {
-  const data = buildChangeDetectionData(patch, backendData?.trend_data, backendData?.factors);
+function ChangeDetectionTab({ patch, config }) {
+  const data = buildChangeDetectionData(patch);
   const peakEntry = data.slice(0, 4).reduce((m, d) => (d.score > m.score ? d : m), data[0]);
 
   return (
@@ -241,14 +239,13 @@ function ChangeDetectionTab({ patch, config, backendData }) {
         <div className="ml-auto text-[9px] text-white/25 italic">* 2025 projected</div>
       </div>
 
-      {/* Year summary cards — show last 6 years max */}
-      <div className="flex gap-1.5 mt-4 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-        {data.slice(-6).map((d) => (
+      {/* Year summary cards */}
+      <div className="grid grid-cols-5 gap-1.5 mt-4">
+        {data.map((d) => (
           <div
             key={d.year}
-            className="rounded-lg p-2 text-center flex-shrink-0"
+            className="rounded-lg p-2 text-center"
             style={{
-              minWidth: 48,
               background: d.predicted ? "rgba(239,68,68,0.06)" : "rgba(255,255,255,0.03)",
               border: d.predicted ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(255,255,255,0.06)",
             }}
@@ -379,10 +376,8 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
   const tier = backendData?.tier || patch.tier;
   const config = TIER_CONFIG[tier] || TIER_CONFIG.LOW;
   const factors = backendData?.factors || patch.factors;
-  const activeTrendData = backendData?.trend_data || patch.trendData || [];
-  const trendLen = activeTrendData.length;
-  const chartStep = trendLen > 30 ? 3 : trendLen > 15 ? 2 : 1;
-  const chartData = activeTrendData.filter((_, i) => i % chartStep === 0);
+  const trendSource = backendData?.trend_data?.length > 0 ? backendData.trend_data : patch.trendData;
+  const chartData = trendSource.filter((_, i) => i % 3 === 0);
 
   const trendLabel = patch.trend === "rising" ? "↑ Rising" : patch.trend === "improving" ? "↓ Improving" : "→ Stable";
   const trendColor = patch.trend === "rising" ? "#EF4444" : patch.trend === "improving" ? "#00D4AA" : "#EAB308";
@@ -462,22 +457,12 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
                 Powered by IBM watsonx
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              {backendData && (
-                <span
-                  className="text-[9px] font-semibold px-2 py-0.5 rounded-full tracking-wider"
-                  style={{ background: "rgba(0,212,170,0.1)", color: "#00D4AA", border: "1px solid rgba(0,212,170,0.2)" }}
-                >
-                  DB
-                </span>
-              )}
-              <span
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
-                style={{ background: config.bg, color: config.color }}
-              >
-                {tier}
-              </span>
-            </div>
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
+              style={{ background: config.bg, color: config.color }}
+            >
+              {tier}
+            </span>
           </div>
 
           {/* Score ring + right info + predictive card */}
@@ -546,34 +531,64 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
 
           {/* ── FIX 1 — CHANGE DETECTION TAB ─────────────────────────────── */}
           {activeTab === "change-detection" && (
-            <ChangeDetectionTab patch={patch} config={config} backendData={backendData} />
+            <ChangeDetectionTab patch={patch} config={config} />
           )}
 
           {/* ── OVERVIEW TAB ──────────────────────────────────────────────── */}
           {activeTab === "overview" && (
             <>
-              {/* 4-year trend sparkline */}
+              {/* 4-year trend sparkline with ML predictions */}
               <div className="px-5 pt-4 pb-2">
-                <div className="text-xs text-white/40 font-semibold uppercase tracking-wider mb-2">4-Year Risk Trend</div>
-                <div className="h-24 w-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-white/40 font-semibold uppercase tracking-wider">Risk Trend</div>
+                  {patch.ml_prediction && (
+                    <span className="text-[9px] px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>
+                      ML Predicted
+                    </span>
+                  )}
+                </div>
+                <div className="h-28 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
+                    <AreaChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
                       <defs>
-                        <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#00D4AA" />
-                          <stop offset="50%" stopColor="#F59E0B" />
-                          <stop offset="100%" stopColor="#EF4444" />
+                        <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={config.color} stopOpacity={0.25} />
+                          <stop offset="100%" stopColor={config.color} stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.2)", fontSize: 9 }}
-                        tickFormatter={(v) => v.slice(0, 4)} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                        tickFormatter={(v) => v.slice(0, 7)} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                       <YAxis hide domain={[0, 100]} />
-                      <Tooltip contentStyle={{ background: "rgba(15,24,41,0.95)", border: "1px solid rgba(0,212,170,0.3)", borderRadius: "8px", fontSize: "11px", color: "white" }}
-                        formatter={(v) => [`${v}`, "Score"]} />
-                      <Line type="monotone" dataKey="score" stroke="url(#lineGrad)" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: config.color }} />
-                    </LineChart>
+                      <Tooltip
+                        contentStyle={{ background: "rgba(15,24,41,0.95)", border: "1px solid rgba(0,212,170,0.3)", borderRadius: "8px", fontSize: "11px", color: "white" }}
+                        formatter={(v, name, props) => {
+                          const label = props.payload?.predicted ? `${v} (ML forecast)` : `${v}`;
+                          return [label, "Score"];
+                        }}
+                      />
+                      <Area type="monotone" dataKey="score" stroke={config.color} strokeWidth={2} fill="url(#trendFill)"
+                        dot={(p) => p.payload?.predicted
+                          ? <circle key={p.key} cx={p.cx} cy={p.cy} r={3} fill="none" stroke="#a78bfa" strokeWidth={2} strokeDasharray="2 2" />
+                          : <circle key={p.key} cx={p.cx} cy={p.cy} r={2} fill={config.color} opacity={0.6} />
+                        }
+                        activeDot={{ r: 4, fill: config.color }}
+                      />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
+                {chartData.some(d => d.predicted) && (
+                  <div className="flex items-center gap-3 mt-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full" style={{ background: config.color, opacity: 0.6 }} />
+                      <span className="text-[9px] text-white/35">Historical</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full border-2 border-dashed" style={{ borderColor: "#a78bfa" }} />
+                      <span className="text-[9px] text-white/35">XGBoost forecast</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Factor bars */}

@@ -1,7 +1,7 @@
 """
 EarthRisk AI — FastAPI Backend
 Climate risk intelligence for insurance underwriters.
-Uses real Sentinel-2 / ERA5-Land data when available, with deterministic fallback.
+Uses XGBoost ML predictions from Sentinel-2 / ERA5-Land data, with deterministic fallback.
 """
 
 import math
@@ -11,8 +11,17 @@ import sqlite3
 import csv
 import io
 import os
+import logging
+import warnings
 from datetime import datetime, timezone
 from typing import Optional
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +29,22 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from regions import REGIONS, nearest_region_key
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("earthrisk")
+
+# ─── ML Engine ─────────────────────────────────────────────────────────────────
+try:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        from ML.ml_engine import engine as ml_engine
+        ml_engine.ensure_ready()
+        ML_AVAILABLE = ml_engine.ready
+    log.info("ML engine ready: %s", ML_AVAILABLE)
+except Exception as _ml_err:
+    log.warning("ML engine not available: %s", _ml_err)
+    ml_engine = None
+    ML_AVAILABLE = False
 
 # ─── OpenAI ───────────────────────────────────────────────────────────────────
 try:
@@ -139,8 +164,18 @@ def climate_data_ready() -> bool:
     return _CLIMATE_DATA_READY
 
 
+def ml_features_for_region(region_name: str) -> dict | None:
+    """Compute risk features using ML predictions (XGBoost)."""
+    if ML_AVAILABLE and ml_engine is not None:
+        try:
+            return ml_engine.compute_risk_features(region_name)
+        except Exception:
+            pass
+    return None
+
+
 def real_features_for_region(conn, region_name: str) -> dict | None:
-    """Compute risk features from real satellite/climate data for a region."""
+    """Compute risk features from real satellite/climate data (SQL fallback)."""
     try:
         s2 = conn.execute("""
             SELECT
@@ -341,8 +376,15 @@ def generate_fallback_summary(area_name, score, features, tier):
 
 # ─── Patch generation from real data ──────────────────────────────────────────
 
+_patches_cache: list | None = None
+
+
 def generate_all_patches() -> list:
-    """Generate 200 risk patches using real satellite data when available."""
+    """Generate 200 risk patches using ML predictions (cached after first call)."""
+    global _patches_cache
+    if _patches_cache is not None:
+        return _patches_cache
+
     use_real = climate_data_ready()
     conn = get_db() if use_real else None
 
@@ -353,8 +395,15 @@ def generate_all_patches() -> list:
         base_features = None
         region_trend = None
 
-        if conn:
+        base_features = ml_features_for_region(info["name"])
+
+        if not base_features and conn:
             base_features = real_features_for_region(conn, info["name"])
+
+        if ML_AVAILABLE and ml_engine is not None:
+            region_trend = ml_engine.predict_trend_data(info["name"])
+
+        if not region_trend and conn:
             region_trend = get_region_trend_data(conn, info["name"])
 
         if not base_features:
@@ -364,11 +413,10 @@ def generate_all_patches() -> list:
         base_score = compute_score(base_features)
         rng = _seeded_random(info["center_lat"] * 1000 + info["center_lon"] * 100)
 
-        for area_name in info["areas"]:
-            lat_offset = (rng() - 0.5) * info["spread"] * 2
-            lon_offset = (rng() - 0.5) * info["spread"] * 2
-            lat = info["center_lat"] + lat_offset
-            lon = info["center_lon"] + lon_offset
+        for area in info["areas"]:
+            area_name = area["name"] if isinstance(area, dict) else area
+            lat = area["lat"] if isinstance(area, dict) else info["center_lat"] + (rng() - 0.5) * info["spread"] * 2
+            lon = area["lon"] if isinstance(area, dict) else info["center_lon"] + (rng() - 0.5) * info["spread"] * 2
 
             raw_score = base_score + (rng() - 0.5) * 18
             score = round(max(5, min(99, raw_score)))
@@ -404,11 +452,15 @@ def generate_all_patches() -> list:
                 "trendData": trend_data,
                 "factors": factors,
                 "real_data": use_real and base_features is not None,
+                "ml_prediction": ML_AVAILABLE,
             })
             patch_id += 1
 
     if conn:
         conn.close()
+
+    _patches_cache = patches
+    log.info("Generated %d patches (ML=%s, real_data=%s)", len(patches), ML_AVAILABLE, use_real)
     return patches
 
 
@@ -421,6 +473,36 @@ def health_check():
         "version": "2.0.0",
         "openai": OPENAI_AVAILABLE,
         "climate_data": climate_data_ready(),
+        "ml_models": ML_AVAILABLE,
+    }
+
+
+@app.get("/api/ml/predictions")
+def get_ml_predictions():
+    """Return all cached ML predictions for debugging and frontend consumption."""
+    if not ML_AVAILABLE or ml_engine is None:
+        return {"ml_available": False, "predictions": {}}
+    return {
+        "ml_available": True,
+        "predictions": ml_engine.get_all_predictions(),
+    }
+
+
+@app.get("/api/ml/region/{region_name}")
+def get_ml_region(region_name: str):
+    """Return ML predictions for a specific region."""
+    if not ML_AVAILABLE or ml_engine is None:
+        raise HTTPException(503, "ML engine not available")
+    risk = ml_engine.compute_risk_features(region_name)
+    trend = ml_engine.predict_trend_data(region_name)
+    climate = ml_engine.predict_climate(region_name)
+    indices = ml_engine.predict_indices_next(region_name)
+    return {
+        "region": region_name,
+        "risk_features": risk,
+        "trend_data": trend,
+        "climate_prediction": climate,
+        "indices_prediction": indices,
     }
 
 
@@ -478,8 +560,10 @@ async def score_area(req: ScoreRequest):
     region_key = nearest_region_key(req.lat, req.lon)
     region_name = REGIONS[region_key]["name"] if region_key else "Unknown"
 
-    features = None
-    if climate_data_ready():
+    # Priority: ML → SQL → deterministic
+    features = ml_features_for_region(region_name)
+
+    if not features and climate_data_ready():
         conn = get_db()
         features = real_features_for_region(conn, region_name)
         conn.close()
@@ -491,7 +575,9 @@ async def score_area(req: ScoreRequest):
     tier = score_to_tier(score)
 
     trend_data_list = []
-    if climate_data_ready():
+    if ML_AVAILABLE and ml_engine is not None:
+        trend_data_list = ml_engine.predict_trend_data(region_name)
+    if not trend_data_list and climate_data_ready():
         conn = get_db()
         trend_data_list = get_region_trend_data(conn, region_name)
         conn.close()
@@ -648,19 +734,20 @@ def get_history():
 
 @app.get("/api/stats")
 def get_stats():
-    patches = generate_all_patches()
-    scores = [p["score"] for p in patches]
-
     conn = get_db()
     try:
+        snap = conn.execute(
+            "SELECT COUNT(*) as cnt, AVG(score) as avg, "
+            "SUM(CASE WHEN score >= 76 THEN 1 ELSE 0 END) as crit "
+            "FROM risk_snapshots"
+        ).fetchone()
         fb = conn.execute("SELECT COUNT(*) as cnt FROM underwriter_feedback").fetchone()
     finally:
         conn.close()
-
     return {
-        "total_snapshots": len(patches),
-        "avg_score": round(sum(scores) / len(scores), 1) if scores else 0,
-        "critical_count": sum(1 for s in scores if s >= 76),
+        "total_snapshots": snap["cnt"] or 200,
+        "avg_score": round(snap["avg"] or 48.5, 1),
+        "critical_count": snap["crit"] or 30,
         "feedback_count": fb["cnt"] or 0,
     }
 

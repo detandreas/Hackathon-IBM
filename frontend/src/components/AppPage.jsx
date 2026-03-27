@@ -175,21 +175,37 @@ export default function AppPage() {
   const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [patches, setPatches] = useState(greecePatches);
   const [dataSource, setDataSource] = useState("static");
+  const [mlStatus, setMlStatus] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/regions")
-      .then((r) => {
-        if (!r.ok) throw new Error("API unavailable");
-        return r.json();
-      })
-      .then((data) => {
-        if (!cancelled && Array.isArray(data) && data.length > 0) {
-          setPatches(data);
-          setDataSource("database");
+
+    async function loadData() {
+      try {
+        const [regionsRes, healthRes] = await Promise.all([
+          fetch("/api/regions"),
+          fetch("/api/health"),
+        ]);
+
+        if (!cancelled && healthRes.ok) {
+          const health = await healthRes.json();
+          setMlStatus(health);
         }
-      })
-      .catch(() => {});
+
+        if (!cancelled && regionsRes.ok) {
+          const data = await regionsRes.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPatches(data);
+            const hasML = data.some((p) => p.ml_prediction);
+            setDataSource(hasML ? "ml" : "database");
+          }
+        }
+      } catch {
+        // Backend offline — keep static data
+      }
+    }
+
+    loadData();
     return () => { cancelled = true; };
   }, []);
 
@@ -251,9 +267,13 @@ export default function AppPage() {
           </span>
           <div
             className="text-[10px] px-2 py-0.5 rounded-full ml-1 font-bold tracking-wider"
-            style={{ background: "rgba(0,212,170,0.1)", color: "#00D4AA", border: "1px solid rgba(0,212,170,0.2)" }}
+            style={{
+              background: dataSource === "ml" ? "rgba(139,92,246,0.15)" : "rgba(0,212,170,0.1)",
+              color: dataSource === "ml" ? "#a78bfa" : "#00D4AA",
+              border: `1px solid ${dataSource === "ml" ? "rgba(139,92,246,0.3)" : "rgba(0,212,170,0.2)"}`,
+            }}
           >
-            {dataSource === "database" ? "LIVE DB" : "LIVE"}
+            {dataSource === "ml" ? "ML LIVE" : dataSource === "database" ? "LIVE DB" : "STATIC"}
           </div>
         </div>
 
