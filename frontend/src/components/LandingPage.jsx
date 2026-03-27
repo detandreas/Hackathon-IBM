@@ -615,7 +615,7 @@ export default function LandingPage() {
 
         {/* Layer 7 — top-center hero glow */}
         <div className="absolute" style={{
-          width: "600px", height: "300px",
+          width: "min(600px, 90vw)", height: "300px",
           top: "10%", left: "50%", transform: "translateX(-50%)",
           background: "radial-gradient(ellipse at center, rgba(0,212,170,0.09) 0%, transparent 70%)",
           filter: "blur(20px)",
@@ -624,7 +624,7 @@ export default function LandingPage() {
 
       {/* Main Content */}
       <div
-        className={`relative z-10 text-center px-6 max-w-4xl mx-auto transition-all duration-1000 ${
+        className={`relative z-10 text-center px-6 max-w-4xl mx-auto pb-48 sm:pb-0 transition-all duration-1000 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
         }`}
       >
