@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { IconSatellite, IconGrid, IconHexagon } from "./Icons";
 import DeckGL from "@deck.gl/react";
 import { ScatterplotLayer, GeoJsonLayer, LineLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { greecePatches } from "../data/greeceData";
 
 // ── Map style presets ──────────────────────────────────────────────────────────
 const MAP_STYLES = {
@@ -133,7 +132,7 @@ function ModeButton({ label, active, onClick, icon }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch }) {
+export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], selectedPatch }) {
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
   const [hoverInfo, setHoverInfo] = useState(null);
   const [greeceGeoJson, setGreeceGeoJson] = useState(null);
@@ -170,7 +169,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
   }, []);
 
   // ── Compute asset → nearest critical patch lines ───────────────────────────
-  const criticalPatches = greecePatches.filter((p) => p.score >= 76);
+  const criticalPatches = useMemo(() => patches.filter((p) => p.score >= 76), [patches]);
   const assetLines = assetPins
     .filter((a) => a.proximity_risk)
     .map((asset) => {
@@ -225,7 +224,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
     layers.push(
       new ScatterplotLayer({
         id: "heat-outer",
-        data: greecePatches,
+        data: patches,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: 32000,
         radiusMinPixels: 20,
@@ -236,7 +235,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
       }),
       new ScatterplotLayer({
         id: "heat-mid",
-        data: greecePatches,
+        data: patches,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: 18000,
         radiusMinPixels: 12,
@@ -247,7 +246,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
       }),
       new ScatterplotLayer({
         id: "heat-core",
-        data: greecePatches,
+        data: patches,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: 8000,
         radiusMinPixels: 6,
@@ -280,7 +279,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
     );
 
     // Pulse rings — HIGH
-    const highPatches = greecePatches.filter((p) => p.score >= 51 && p.score < 76);
+    const highPatches = patches.filter((p) => p.score >= 51 && p.score < 76);
     layers.push(
       new ScatterplotLayer({
         id: "high-pulse",
@@ -302,7 +301,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
     layers.push(
       new ScatterplotLayer({
         id: "risk-patches-glow",
-        data: greecePatches,
+        data: patches,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: 12000,
         radiusMinPixels: 8,
@@ -317,7 +316,7 @@ export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch 
     layers.push(
       new ScatterplotLayer({
         id: "risk-patches",
-        data: greecePatches,
+        data: patches,
         getPosition: (d) => [d.lon, d.lat],
         getRadius: (d) => {
           const base = 6000 + (d.score / 100) * 4000;

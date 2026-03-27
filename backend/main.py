@@ -648,20 +648,19 @@ def get_history():
 
 @app.get("/api/stats")
 def get_stats():
+    patches = generate_all_patches()
+    scores = [p["score"] for p in patches]
+
     conn = get_db()
     try:
-        snap = conn.execute(
-            "SELECT COUNT(*) as cnt, AVG(score) as avg, "
-            "SUM(CASE WHEN score >= 76 THEN 1 ELSE 0 END) as crit "
-            "FROM risk_snapshots"
-        ).fetchone()
         fb = conn.execute("SELECT COUNT(*) as cnt FROM underwriter_feedback").fetchone()
     finally:
         conn.close()
+
     return {
-        "total_snapshots": snap["cnt"] or 200,
-        "avg_score": round(snap["avg"] or 48.5, 1),
-        "critical_count": snap["crit"] or 30,
+        "total_snapshots": len(patches),
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else 0,
+        "critical_count": sum(1 for s in scores if s >= 76),
         "feedback_count": fb["cnt"] or 0,
     }
 

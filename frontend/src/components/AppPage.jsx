@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IconMousePointer, IconClose, IconHexagon, IconFolder } from "./Icons";
 import GreeceMap from "./GreeceMap";
@@ -8,15 +8,8 @@ import PortfolioUploader from "./PortfolioUploader";
 import HistoryDrawer from "./HistoryDrawer";
 import { greecePatches } from "../data/greeceData";
 
-// Top 5 highest-scoring patches for priority queue
-const TOP5 = [...greecePatches]
-  .sort((a, b) => b.score - a.score)
-  .slice(0, 5);
-
-const CRITICAL_COUNT = greecePatches.filter((p) => p.score >= 76).length;
-
 // ── Priority Queue panel ───────────────────────────────────────────────────────
-function PriorityQueue({ onAssess, onClose }) {
+function PriorityQueue({ onAssess, onClose, top5, criticalCount }) {
   return (
     <div
       className="absolute top-0 right-0 bottom-0 z-30 flex flex-col"
@@ -56,7 +49,7 @@ function PriorityQueue({ onAssess, onClose }) {
 
       {/* Zone list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {TOP5.map((patch, i) => {
+        {top5.map((patch, i) => {
           const tierColor = patch.score >= 76 ? "#EF4444" : patch.score >= 51 ? "#F59E0B" : "#00D4AA";
           const trendArrow = patch.trend === "rising" ? "↑" : patch.trend === "improving" ? "↓" : "→";
           const trendColor = patch.trend === "rising" ? "#EF4444" : patch.trend === "improving" ? "#00D4AA" : "#EAB308";
@@ -107,7 +100,7 @@ function PriorityQueue({ onAssess, onClose }) {
 
       <div className="px-4 py-3 border-t border-white/5 flex-shrink-0">
         <div className="text-[10px] text-white/25 text-center">
-          Showing top 5 of {CRITICAL_COUNT} critical zones · Updated real-time
+          Showing top 5 of {criticalCount} critical zones · Updated real-time
         </div>
       </div>
     </div>
@@ -180,6 +173,35 @@ export default function AppPage() {
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
+  const [patches, setPatches] = useState(greecePatches);
+  const [dataSource, setDataSource] = useState("static");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/regions")
+      .then((r) => {
+        if (!r.ok) throw new Error("API unavailable");
+        return r.json();
+      })
+      .then((data) => {
+        if (!cancelled && Array.isArray(data) && data.length > 0) {
+          setPatches(data);
+          setDataSource("database");
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const top5 = useMemo(
+    () => [...patches].sort((a, b) => b.score - a.score).slice(0, 5),
+    [patches]
+  );
+
+  const criticalCount = useMemo(
+    () => patches.filter((p) => p.score >= 76).length,
+    [patches]
+  );
 
   const handlePatchClick = useCallback((patch) => {
     setSelectedPatch(patch);
@@ -231,7 +253,7 @@ export default function AppPage() {
             className="text-[10px] px-2 py-0.5 rounded-full ml-1 font-bold tracking-wider"
             style={{ background: "rgba(0,212,170,0.1)", color: "#00D4AA", border: "1px solid rgba(0,212,170,0.2)" }}
           >
-            LIVE
+            {dataSource === "database" ? "LIVE DB" : "LIVE"}
           </div>
         </div>
 
@@ -248,7 +270,7 @@ export default function AppPage() {
               className="w-2 h-2 rounded-full bg-[#EF4444] flex-shrink-0"
               style={{ boxShadow: "0 0 5px #EF4444", animation: "pulse 1.5s infinite" }}
             />
-            <span className="text-[#EF4444]/70 font-semibold">{CRITICAL_COUNT}</span>
+            <span className="text-[#EF4444]/70 font-semibold">{criticalCount}</span>
             <span>critical</span>
           </div>
 
@@ -268,7 +290,7 @@ export default function AppPage() {
               className="text-[10px] px-1.5 py-0.5 rounded-full font-black"
               style={{ background: "rgba(239,68,68,0.2)" }}
             >
-              {CRITICAL_COUNT}
+              {criticalCount}
             </span>
           </button>
 
@@ -315,6 +337,7 @@ export default function AppPage() {
           style={{ marginRight: (panelOpen && !priorityOpen) ? "400px" : priorityOpen ? "340px" : "0" }}
         >
           <GreeceMap
+            patches={patches}
             onPatchClick={handlePatchClick}
             assetPins={assetPins}
             selectedPatch={selectedPatch}
@@ -338,6 +361,8 @@ export default function AppPage() {
         {/* FIX 5 — Priority Queue panel (replaces/alongside score panel) */}
         {priorityOpen && (
           <PriorityQueue
+            top5={top5}
+            criticalCount={criticalCount}
             onAssess={handlePatchClick}
             onClose={() => setPriorityOpen(false)}
           />
