@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { IconSatellite, IconGrid, IconHexagon } from "./Icons";
 import DeckGL from "@deck.gl/react";
 import { ScatterplotLayer, GeoJsonLayer, LineLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { greecePatches } from "../data/greeceData";
+
 // ── Map style presets ──────────────────────────────────────────────────────────
 const MAP_STYLES = {
   standard: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -130,7 +133,7 @@ function ModeButton({ label, active, onClick, icon }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function GreeceMap({ patches: greecePatches = [], onPatchClick, assetPins = [], selectedPatch }) {
+export default function GreeceMap({ onPatchClick, assetPins = [], selectedPatch }) {
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
   const [hoverInfo, setHoverInfo] = useState(null);
   const [greeceGeoJson, setGreeceGeoJson] = useState(null);
@@ -443,19 +446,19 @@ export default function GreeceMap({ patches: greecePatches = [], onPatchClick, a
       >
         <ModeButton
           label="Standard"
-          icon="◉"
+          icon={<IconGrid size={12} />}
           active={mapMode === "standard"}
           onClick={() => setMapMode("standard")}
         />
         <ModeButton
           label="Risk Heat"
-          icon="⬡"
+          icon={<IconHexagon size={12} />}
           active={mapMode === "heatmap"}
           onClick={() => setMapMode("heatmap")}
         />
         <ModeButton
           label="Satellite"
-          icon="🛰"
+          icon={<IconSatellite size={12} />}
           active={mapMode === "satellite"}
           onClick={() => setMapMode("satellite")}
         />

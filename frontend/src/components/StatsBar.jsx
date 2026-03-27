@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { greecePatches } from "../data/greeceData";
+import { IconMap, IconBarChart, IconAlert, IconRefresh } from "./Icons";
 
 const DEFAULT_STATS = {
   total_snapshots: 200,
-  avg_score: 49,
-  critical_count: 30,
+  avg_score: Math.round(greecePatches.reduce((s, p) => s + p.score, 0) / greecePatches.length),
+  critical_count: greecePatches.filter((p) => p.score >= 76).length,
   feedback_count: 0,
 };
 
@@ -31,28 +33,28 @@ export default function StatsBar({ refreshTrigger }) {
     {
       label: "Areas Monitored",
       value: stats.total_snapshots,
-      icon: "🗺️",
+      icon: <IconMap size={14} />,
       color: "#00D4AA",
       suffix: "",
     },
     {
       label: "Avg Risk Score",
       value: stats.avg_score,
-      icon: "📊",
+      icon: <IconBarChart size={14} />,
       color: stats.avg_score >= 60 ? "#F59E0B" : "#00D4AA",
       suffix: "/100",
     },
     {
       label: "Critical Zones",
       value: stats.critical_count,
-      icon: "⚠️",
+      icon: <IconAlert size={14} />,
       color: "#EF4444",
       suffix: "",
     },
     {
       label: "Feedback Signals",
       value: stats.feedback_count,
-      icon: "🔄",
+      icon: <IconRefresh size={14} />,
       color: "#a78bfa",
       suffix: "",
     },
@@ -70,7 +72,7 @@ export default function StatsBar({ refreshTrigger }) {
             i > 0 ? "border-l border-white/[0.06]" : ""
           }`}
         >
-          <span className="text-sm">{item.icon}</span>
+          <span className="opacity-70" style={{ color: item.color }}>{item.icon}</span>
           <div>
             <div
               className={`text-base font-bold leading-none font-mono transition-all duration-300 ${
