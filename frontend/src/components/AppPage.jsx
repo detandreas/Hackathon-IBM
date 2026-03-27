@@ -37,16 +37,6 @@ function PriorityQueue({ onAssess, onClose, top5, criticalCount }) {
         </button>
       </div>
 
-      {/* IBM watsonx tag */}
-      <div className="px-4 py-2 border-b border-white/5 flex-shrink-0">
-        <div
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold"
-          style={{ background: "rgba(15,98,254,0.12)", border: "1px solid rgba(15,98,254,0.3)", color: "#0F62FE" }}
-        >
-          <IconHexagon size={11} /> Ranked by XGBoost risk model · IBM watsonx
-        </div>
-      </div>
-
       {/* Zone list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {top5.map((patch, i) => {

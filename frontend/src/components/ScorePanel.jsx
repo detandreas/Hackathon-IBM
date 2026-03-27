@@ -438,25 +438,9 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
           </div>
         </div>
 
-        {/* ── Score hero + predictive card + IBM watsonx badge ───────────────── */}
+        {/* ── Score hero + risk tier ───────────────────────────────────────── */}
         <div className="flex-shrink-0 border-b border-white/5">
-          {/* FIX 3 — IBM watsonx badge — always visible, at very top of panel body */}
           <div className="flex items-center justify-between px-4 pt-3 pb-1">
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full"
-              style={{
-                background: "rgba(15,98,254,0.12)",
-                border: "1px solid rgba(15,98,254,0.35)",
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 32 32" fill="none">
-                <rect width="32" height="32" rx="4" fill="#0F62FE" />
-                <text x="4" y="23" fontSize="18" fontWeight="900" fill="white" fontFamily="'Space Mono', monospace">w</text>
-              </svg>
-              <span className="text-[11px] font-bold tracking-wide" style={{ color: "#0F62FE" }}>
-                Powered by IBM watsonx
-              </span>
-            </div>
             <span
               className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
               style={{ background: config.bg, color: config.color }}
