@@ -356,16 +356,16 @@ export default function AppPage() {
             onClose={() => setPriorityOpen(false)}
           />
         )}
-
-        {/* Score Panel */}
-        {panelOpen && selectedPatch && !priorityOpen && (
-          <ScorePanel
-            patch={selectedPatch}
-            onClose={handleClosePanel}
-            onFeedbackSubmit={handleFeedbackSubmit}
-          />
-        )}
       </div>
+
+      {/* Score Panel (outside overflow-hidden container) */}
+      {panelOpen && selectedPatch && !priorityOpen && (
+        <ScorePanel
+          patch={selectedPatch}
+          onClose={handleClosePanel}
+          onFeedbackSubmit={handleFeedbackSubmit}
+        />
+      )}
 
       <AppFooter
         portfolioOpen={portfolioOpen}
