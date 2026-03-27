@@ -294,12 +294,15 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
 
   useEffect(() => {
     if (!patch) return;
+    setVisible(false);
     setAiSummary("");
     setBackendData(null);
     setOverrideOpen(false);
     setActiveTab("overview");
     snapshotIdRef.current = null;
+    const t = setTimeout(() => setVisible(true), 10);
     fetchScore();
+    return () => clearTimeout(t);
   }, [patch?.id]);
 
   async function fetchScore() {
