@@ -733,7 +733,7 @@ export default function LandingPage() {
 
       {/* Bottom stats */}
       <div
-        className={`absolute bottom-8 left-0 right-0 flex justify-center gap-3 px-6 transition-all duration-1000 delay-500 ${
+        className={`absolute bottom-8 left-0 right-0 flex justify-center gap-2 sm:gap-3 px-3 sm:px-6 transition-all duration-1000 delay-500 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
         }`}
       >
@@ -746,7 +746,7 @@ export default function LandingPage() {
           <button
             key={stat.label}
             onClick={() => setActiveStat(stat)}
-            className="flex flex-col items-center justify-center text-center px-5 py-4 rounded-2xl min-w-[100px] transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer group"
+            className="flex flex-col items-center justify-center text-center px-2 sm:px-5 py-2 sm:py-4 rounded-2xl min-w-[70px] sm:min-w-[100px] transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer group"
             style={{
               background: "rgba(255,255,255,0.03)",
               border: `1px solid ${stat.color}22`,
@@ -755,16 +755,16 @@ export default function LandingPage() {
             }}
           >
             <div
-              className="text-2xl font-bold font-mono leading-none mb-1.5 transition-all duration-300 group-hover:drop-shadow-lg"
+              className="text-lg sm:text-2xl font-bold font-mono leading-none mb-1 sm:mb-1.5 transition-all duration-300 group-hover:drop-shadow-lg"
               style={{ color: stat.color }}
             >
               {stat.value}
             </div>
-            <div className="text-[10px] text-white/35 uppercase tracking-wider leading-tight group-hover:text-white/60 transition-colors duration-300">
+            <div className="text-[8px] sm:text-[10px] text-white/35 uppercase tracking-wider leading-tight group-hover:text-white/60 transition-colors duration-300">
               {stat.label}
             </div>
             <div
-              className="w-6 h-px mt-2.5 rounded-full transition-all duration-300 group-hover:w-10"
+              className="w-4 sm:w-6 h-px mt-1.5 sm:mt-2.5 rounded-full transition-all duration-300 group-hover:w-6 sm:group-hover:w-10"
               style={{ background: `${stat.color}60` }}
             />
           </button>
