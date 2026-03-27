@@ -816,21 +816,39 @@ def get_history():
 
 @app.get("/api/stats")
 def get_stats():
+    """KPIs match the map: same patch list as GET /api/regions (scores include local variation)."""
+    if ML_AVAILABLE and ml_engine is not None:
+        patches = generate_all_patches()
+    else:
+        patches = generate_patches_from_db()
+
     conn = get_db()
     try:
-        snap = conn.execute(
-            "SELECT COUNT(*) as cnt, AVG(score) as avg, "
-            "SUM(CASE WHEN score >= 76 THEN 1 ELSE 0 END) as crit "
-            "FROM risk_snapshots"
-        ).fetchone()
-        fb = conn.execute("SELECT COUNT(*) as cnt FROM underwriter_feedback").fetchone()
+        fb = conn.execute("SELECT COUNT(*) AS cnt FROM underwriter_feedback").fetchone()
     finally:
         conn.close()
+
+    feedback_count = int(fb["cnt"] or 0) if fb else 0
+
+    scores = [
+        p["score"]
+        for p in patches
+        if isinstance(p.get("score"), (int, float))
+    ]
+    n = len(scores)
+    if n == 0:
+        return {
+            "total_snapshots": 0,
+            "avg_score": 0,
+            "critical_count": 0,
+            "feedback_count": feedback_count,
+        }
+
     return {
-        "total_snapshots": snap["cnt"] or 200,
-        "avg_score": round(snap["avg"] or 48.5, 1),
-        "critical_count": snap["crit"] or 30,
-        "feedback_count": fb["cnt"] or 0,
+        "total_snapshots": n,
+        "avg_score": round(sum(scores) / n),
+        "critical_count": sum(1 for s in scores if s >= 76),
+        "feedback_count": feedback_count,
     }
 
 

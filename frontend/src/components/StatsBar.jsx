@@ -1,17 +1,26 @@
 import { useEffect, useState } from "react";
-import { greecePatches } from "../data/greeceData";
 import { IconMap, IconBarChart, IconAlert, IconRefresh } from "./Icons";
 import { apiUrl } from "../api";
 
-const DEFAULT_STATS = {
-  total_snapshots: 200,
-  avg_score: Math.round(greecePatches.reduce((s, p) => s + p.score, 0) / greecePatches.length),
-  critical_count: greecePatches.filter((p) => p.score >= 76).length,
+const EMPTY_STATS = {
+  total_snapshots: 0,
+  avg_score: 0,
+  critical_count: 0,
   feedback_count: 0,
 };
 
+function normalizeStats(data) {
+  if (!data || typeof data !== "object") return EMPTY_STATS;
+  return {
+    total_snapshots: Number(data.total_snapshots) || 0,
+    avg_score: Number(data.avg_score) || 0,
+    critical_count: Number(data.critical_count) || 0,
+    feedback_count: Number(data.feedback_count) || 0,
+  };
+}
+
 export default function StatsBar({ refreshTrigger }) {
-  const [stats, setStats] = useState(DEFAULT_STATS);
+  const [stats, setStats] = useState(EMPTY_STATS);
   const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
@@ -21,10 +30,11 @@ export default function StatsBar({ refreshTrigger }) {
   async function fetchStats() {
     try {
       const res = await fetch(apiUrl("/api/stats"));
+      if (!res.ok) throw new Error("stats failed");
       const data = await res.json();
-      setStats({ ...DEFAULT_STATS, ...data });
+      setStats(normalizeStats(data));
     } catch {
-      setStats(DEFAULT_STATS);
+      setStats(EMPTY_STATS);
     }
     setPulse(true);
     setTimeout(() => setPulse(false), 600);
