@@ -34,10 +34,6 @@ frontend/dist/
 *.sqlite
 *.sqlite3
 
-# ── Generated data ──────────────────────────
-backend/data/*.csv
-backend/data/*.parquet
-
 # ── Environment / secrets ────────────────────
 .env
 .env.*
