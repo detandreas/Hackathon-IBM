@@ -23,8 +23,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
-        mono: ["JetBrains Mono", "Fira Code", "monospace"],
+        sans: ["Space Grotesk", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        mono: ["Space Mono", "monospace"],
       },
       backdropBlur: {
         xs: "2px",

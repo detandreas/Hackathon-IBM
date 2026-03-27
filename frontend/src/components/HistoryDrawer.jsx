@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { IconCheck, IconPencil, IconClose } from "./Icons";
 
 const TIER_COLORS = {
   CRITICAL: "#EF4444",
@@ -53,7 +54,7 @@ export default function HistoryDrawer({ refreshTrigger }) {
       {/* Toggle button */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white transition-all hover:scale-105"
+        className="fixed bottom-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white transition-all hover:scale-105"
         style={{
           background: open ? "rgba(0,212,170,0.2)" : "rgba(30,41,59,0.95)",
           border: "1px solid rgba(0,212,170,0.25)",
@@ -61,7 +62,9 @@ export default function HistoryDrawer({ refreshTrigger }) {
           backdropFilter: "blur(12px)",
         }}
       >
-        <span>{open ? "↓" : "↑"}</span>
+        <span style={{ display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+        </span>
         <span>Risk Archive</span>
         <span
           className="text-xs px-2 py-0.5 rounded-full font-bold"
@@ -71,11 +74,12 @@ export default function HistoryDrawer({ refreshTrigger }) {
         </span>
       </button>
 
-      {/* Drawer */}
+      {/* Drawer — slides up from above the footer */}
       <div
-        className="fixed left-0 right-0 bottom-0 z-40 transition-transform duration-400 ease-out"
+        className="fixed left-0 right-0 z-40 transition-transform duration-400 ease-out"
         style={{
-          transform: open ? "translateY(0)" : "translateY(100%)",
+          bottom: "36px",
+          transform: open ? "translateY(0)" : "translateY(110%)",
           maxHeight: "55vh",
           background: "rgba(8,12,24,0.98)",
           border: "1px solid rgba(0,212,170,0.12)",
@@ -107,9 +111,9 @@ export default function HistoryDrawer({ refreshTrigger }) {
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="text-white/30 hover:text-white text-lg leading-none"
+              className="text-white/30 hover:text-white leading-none flex items-center"
             >
-              ✕
+              <IconClose size={16} />
             </button>
           </div>
         </div>
@@ -164,7 +168,11 @@ export default function HistoryDrawer({ refreshTrigger }) {
                               color: snap.action === "agree" ? "#00D4AA" : "#F59E0B",
                             }}
                           >
-                            {snap.action === "agree" ? "✓ Confirmed" : "✏ Override"}
+                            <span className="flex items-center gap-1">
+                              {snap.action === "agree"
+                                ? <><IconCheck size={10} /> Confirmed</>
+                                : <><IconPencil size={10} /> Override</>}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-white/20">—</span>
