@@ -126,7 +126,13 @@ Hackathon-IBM/
 2. Go to [vercel.com/new](https://vercel.com/new)
 3. Import the repo
 4. Set environment variable: `OPENAI_API_KEY` = your OpenAI key
-5. Click **Deploy**
+5. (Recommended) Set `DB_PATH=/tmp/climate_risk.db` for serverless runtime
+6. Click **Deploy**
+
+After deploy, verify:
+
+- `GET /api/health` returns `"ml_models": true` and `"openai": true`
+- `GET /api/regions` returns patches with `"ml_prediction": true`
 
 ---
 

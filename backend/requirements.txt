@@ -10,6 +10,10 @@ pydantic>=2.10
 # ── Data pipeline ────────────────────────────
 pandas>=2.2
 numpy>=1.26
+xgboost>=2.0
+scikit-learn>=1.4
+joblib>=1.4
+python-dotenv>=1.0
 xarray>=2024.1
 netcdf4>=1.6
 rasterio>=1.3

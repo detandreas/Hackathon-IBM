@@ -78,7 +78,11 @@ app.add_middleware(
 )
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("DB_PATH", os.path.join(_HERE, "data", "climate_risk.db"))
+# Vercel serverless runtime is read-only outside /tmp.
+if os.environ.get("VERCEL"):
+    DB_PATH = os.environ.get("DB_PATH", "/tmp/climate_risk.db")
+else:
+    DB_PATH = os.environ.get("DB_PATH", os.path.join(_HERE, "data", "climate_risk.db"))
 
 
 # ─── Database ─────────────────────────────────────────────────────────────────
