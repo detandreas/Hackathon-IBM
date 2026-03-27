@@ -123,30 +123,8 @@ function AppFooter({ portfolioOpen, onPortfolioToggle }) {
         <span>Portfolio</span>
       </button>
 
-      {/* CENTER — Demo guide steps */}
-      <div className="flex-1 flex items-center justify-center gap-x-3 gap-y-1 flex-wrap">
-        <span className="text-[10px] font-bold text-[#00D4AA] uppercase tracking-widest flex-shrink-0">
-          Demo Guide
-        </span>
-        <div className="w-px h-3 bg-white/10 flex-shrink-0" />
-        {[
-          { num: "1", text: "Click Thessaly or Evia zone" },
-          { num: "2", text: "View Change Detection tab" },
-          { num: "3", text: "Check Predicted Risk card" },
-          { num: "4", text: "Export PDF Report" },
-        ].map(({ num, text }) => (
-          <div key={num} className="flex items-center gap-1.5 flex-shrink-0">
-            <span
-              className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0"
-              style={{ background: "rgba(0,212,170,0.2)", color: "#00D4AA" }}
-            >
-              {num}
-            </span>
-            <span className="text-[11px] text-white/45">{text}</span>
-            {num !== "4" && <span className="text-white/15 text-xs">→</span>}
-          </div>
-        ))}
-      </div>
+      {/* CENTER — spacer */}
+      <div className="flex-1" />
 
       {/* RIGHT — spacer to balance the left button */}
       <div className="flex-shrink-0 w-[80px]" />
