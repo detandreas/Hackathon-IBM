@@ -1,6 +1,7 @@
 """
 EarthRisk AI — FastAPI Backend
-Climate risk intelligence for insurance underwriters
+Climate risk intelligence for insurance underwriters.
+Uses real Sentinel-2 / ERA5-Land data when available, with deterministic fallback.
 """
 
 import math
@@ -11,12 +12,14 @@ import csv
 import io
 import os
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+from regions import REGIONS, nearest_region_key
 
 # ─── OpenAI ───────────────────────────────────────────────────────────────────
 try:
@@ -38,7 +41,7 @@ except ImportError:
 app = FastAPI(
     title="EarthRisk AI",
     description="Climate risk intelligence API for insurance underwriters",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -50,10 +53,11 @@ app.add_middleware(
 )
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("DB_PATH", os.path.join(_HERE, "data", "earthrisk.db"))
+DB_PATH = os.environ.get("DB_PATH", os.path.join(_HERE, "data", "climate_risk.db"))
 
 
 # ─── Database ─────────────────────────────────────────────────────────────────
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -61,37 +65,20 @@ def get_db():
 
 
 def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_db()
-    c = conn.cursor()
-    c.executescript("""
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS risk_snapshots (
-            id TEXT PRIMARY KEY,
-            area_name TEXT,
-            lat REAL,
-            lon REAL,
-            score REAL,
-            tier TEXT,
-            factors TEXT,
-            summary TEXT,
-            created_at TEXT
+            id TEXT PRIMARY KEY, area_name TEXT, lat REAL, lon REAL,
+            score REAL, tier TEXT, factors TEXT, summary TEXT, created_at TEXT
         );
         CREATE TABLE IF NOT EXISTS underwriter_feedback (
-            id TEXT PRIMARY KEY,
-            snapshot_id TEXT,
-            action TEXT,
-            override_score REAL,
-            reason TEXT,
-            created_at TEXT
+            id TEXT PRIMARY KEY, snapshot_id TEXT, action TEXT,
+            override_score REAL, reason TEXT, created_at TEXT
         );
         CREATE TABLE IF NOT EXISTS asset_portfolios (
-            id TEXT PRIMARY KEY,
-            insurer_id TEXT,
-            name TEXT,
-            lat REAL,
-            lon REAL,
-            value REAL,
-            proximity_risk INTEGER,
-            created_at TEXT
+            id TEXT PRIMARY KEY, insurer_id TEXT, name TEXT,
+            lat REAL, lon REAL, value REAL, proximity_risk INTEGER, created_at TEXT
         );
     """)
     conn.commit()
@@ -102,6 +89,7 @@ init_db()
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
+
 class ScoreRequest(BaseModel):
     lat: float
     lon: float
@@ -110,37 +98,164 @@ class ScoreRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     snapshot_id: str
-    action: str  # "agree" | "override"
+    action: str
     override_score: Optional[float] = None
     reason: Optional[str] = None
 
 
-# ─── Risk computation helpers ─────────────────────────────────────────────────
+# ─── Deterministic PRNG (matches frontend JS implementation) ──────────────────
+
+def _seeded_random(seed):
+    s = int(seed) & 0xFFFFFFFF
+    def gen():
+        nonlocal s
+        s = (s * 1664525 + 1013904223) & 0xFFFFFFFF
+        return s / 0xFFFFFFFF
+    return gen
+
+
+# ─── Climate data helpers ─────────────────────────────────────────────────────
+
+def _has_climate_tables() -> bool:
+    """Check if the DB has populated climate data tables."""
+    try:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT COUNT(*) as n FROM sentinel2_features"
+        ).fetchone()
+        conn.close()
+        return row and row["n"] > 0
+    except Exception:
+        return False
+
+
+_CLIMATE_DATA_READY = None
+
+
+def climate_data_ready() -> bool:
+    global _CLIMATE_DATA_READY
+    if _CLIMATE_DATA_READY is None:
+        _CLIMATE_DATA_READY = _has_climate_tables()
+    return _CLIMATE_DATA_READY
+
+
+def real_features_for_region(conn, region_name: str) -> dict | None:
+    """Compute risk features from real satellite/climate data for a region."""
+    try:
+        s2 = conn.execute("""
+            SELECT
+                AVG(CASE WHEN month >= '2023-01' THEN NDVI END)  AS recent_ndvi,
+                AVG(CASE WHEN month <  '2020-01' THEN NDVI END)  AS baseline_ndvi
+            FROM sentinel2_features WHERE region = ?
+        """, (region_name,)).fetchone()
+
+        era5 = conn.execute("""
+            SELECT
+                AVG(CASE WHEN month >= '2023-01' THEN temp_2m_C END)           AS recent_temp,
+                AVG(CASE WHEN month <  '2020-01' THEN temp_2m_C END)           AS baseline_temp,
+                AVG(CASE WHEN month >= '2023-01' THEN soil_water_vol_m3m3 END) AS recent_soil
+            FROM era5_land_features WHERE region = ?
+        """, (region_name,)).fetchone()
+
+        has_ndvi = (s2 and s2["recent_ndvi"] is not None
+                    and s2["baseline_ndvi"] is not None)
+        has_era5 = (era5 and era5["recent_temp"] is not None
+                    and era5["baseline_temp"] is not None)
+
+        if not has_ndvi and not has_era5:
+            return None
+
+        ndvi_drop = 30.0
+        if has_ndvi and s2["baseline_ndvi"] > 0:
+            ndvi_drop = max(0, (s2["baseline_ndvi"] - s2["recent_ndvi"])
+                           / s2["baseline_ndvi"] * 100)
+
+        temp_increase = 1.5
+        if has_era5:
+            temp_increase = max(0, era5["recent_temp"] - era5["baseline_temp"])
+
+        land_stress = 0.5
+        if era5 and era5["recent_soil"] is not None and era5["recent_soil"] > 0:
+            land_stress = max(0, min(1, 1 - (era5["recent_soil"] / 0.4)))
+
+        return {
+            "ndvi_drop": round(min(95, max(5, ndvi_drop)), 1),
+            "temp_increase": round(min(4.5, max(0.3, temp_increase)), 2),
+            "land_stress": round(min(0.95, max(0.05, land_stress)), 3),
+            "asset_proximity": 50.0,
+        }
+    except Exception:
+        return None
+
+
+def get_region_trend_data(conn, region_name: str) -> list:
+    """Build monthly risk score time series from real data."""
+    try:
+        rows = conn.execute("""
+            SELECT e.month,
+                   AVG(e.temp_2m_C)           AS temp,
+                   AVG(e.soil_water_vol_m3m3) AS soil,
+                   AVG(s.NDVI)                AS ndvi
+            FROM era5_land_features e
+            LEFT JOIN sentinel2_features s
+              ON e.region = s.region AND e.month = s.month
+            WHERE e.region = ?
+            GROUP BY e.month
+            ORDER BY e.month
+        """, (region_name,)).fetchall()
+
+        if not rows:
+            return []
+
+        temps = [r["temp"] for r in rows if r["temp"] is not None]
+        ndvis = [r["ndvi"] for r in rows if r["ndvi"] is not None]
+        baseline_temp = sum(temps[:12]) / max(len(temps[:12]), 1) if temps else 20
+        baseline_ndvi = sum(ndvis[:6]) / max(len(ndvis[:6]), 1) if ndvis else 0.5
+
+        trend_data = []
+        for r in rows:
+            ndvi = r["ndvi"] if r["ndvi"] is not None else baseline_ndvi
+            temp = r["temp"] if r["temp"] is not None else baseline_temp
+            soil = r["soil"] if r["soil"] is not None else 0.25
+
+            ndvi_drop_pct = max(0, (baseline_ndvi - ndvi) / baseline_ndvi * 100) if baseline_ndvi > 0 else 0
+            temp_inc = max(0, temp - baseline_temp)
+            stress = max(0, min(1, 1 - (soil / 0.4)))
+
+            score = (
+                0.30 * min(ndvi_drop_pct / 100, 1)
+                + 0.25 * min(temp_inc / 4.5, 1)
+                + 0.25 * stress
+                + 0.20 * 0.5
+            ) * 100
+            score = round(max(1, min(99, score)), 1)
+
+            trend_data.append({"date": r["month"], "score": score})
+
+        return trend_data
+    except Exception:
+        return []
+
+
+# ─── Risk computation ─────────────────────────────────────────────────────────
+
 def deterministic_features(lat: float, lon: float) -> dict:
-    """Generate deterministic climate risk features from lat/lon using trig."""
+    """Synthetic fallback when no real data is available."""
     seed = lat * 137.5 + lon * 239.7
-
-    ndvi_drop = abs(math.sin(seed * 0.31 + 1.1)) * 60 + abs(math.cos(seed * 0.17)) * 35
-    temp_increase = abs(math.sin(seed * 0.53 + 2.3)) * 3.5 + 0.5
-    land_stress = abs(math.sin(seed * 0.79 + 0.7)) * 0.7 + 0.1
-    asset_proximity = abs(math.cos(seed * 0.43 + 1.9)) * 80 + 10
-
-    # Clamp to realistic ranges
-    ndvi_drop = min(95.0, max(5.0, round(ndvi_drop, 1)))
-    temp_increase = min(4.5, max(0.3, round(temp_increase, 2)))
-    land_stress = min(0.95, max(0.05, round(land_stress, 3)))
-    asset_proximity = min(95.0, max(5.0, round(asset_proximity, 1)))
-
     return {
-        "ndvi_drop": ndvi_drop,
-        "temp_increase": temp_increase,
-        "land_stress": land_stress,
-        "asset_proximity": asset_proximity,
+        "ndvi_drop": min(95.0, max(5.0, round(
+            abs(math.sin(seed * 0.31 + 1.1)) * 60
+            + abs(math.cos(seed * 0.17)) * 35, 1))),
+        "temp_increase": min(4.5, max(0.3, round(
+            abs(math.sin(seed * 0.53 + 2.3)) * 3.5 + 0.5, 2))),
+        "land_stress": min(0.95, max(0.05, round(
+            abs(math.sin(seed * 0.79 + 0.7)) * 0.7 + 0.1, 3))),
+        "asset_proximity": min(95.0, max(5.0, round(
+            abs(math.cos(seed * 0.43 + 1.9)) * 80 + 10, 1))),
     }
 
 
 def compute_score(features: dict) -> float:
-    """Weighted score formula matching frontend expectations."""
     score = (
         0.30 * (features["ndvi_drop"] / 100)
         + 0.25 * (features["temp_increase"] / 4.5)
@@ -161,12 +276,11 @@ def score_to_tier(score: float) -> str:
 
 
 def generate_trend_data(score: float, lat: float, lon: float) -> list:
-    """Generate 48 months of synthetic historical risk trend data."""
+    """Synthetic 48-month trend fallback."""
     trend_type = "rising" if score > 65 else ("improving" if score < 35 else "stable")
     seed = lat * 71.3 + lon * 43.7
     data = []
     base = score - (12 if trend_type == "rising" else -8 if trend_type == "improving" else 0)
-
     for month in range(48):
         noise = math.sin(seed * (month + 1) * 0.31) * 5
         drift = (
@@ -181,11 +295,9 @@ def generate_trend_data(score: float, lat: float, lon: float) -> list:
     return data
 
 
-async def generate_ai_summary(area_name: str, score: float, features: dict, tier: str) -> str:
-    """Call GPT-4o-mini for a professional risk briefing."""
+async def generate_ai_summary(area_name, score, features, tier):
     if not OPENAI_AVAILABLE or not os.environ.get("OPENAI_API_KEY"):
         return generate_fallback_summary(area_name, score, features, tier)
-
     prompt = (
         f"You are a climate risk analyst for an insurance company. "
         f"Area: {area_name}. Risk score: {score}/100 ({tier} tier). "
@@ -196,7 +308,6 @@ async def generate_ai_summary(area_name: str, score: float, features: dict, tier
         f"Write a 2-3 sentence professional risk briefing for an underwriter. "
         f"Be specific, actionable, and reference the actual data values."
     )
-
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -204,23 +315,20 @@ async def generate_ai_summary(area_name: str, score: float, features: dict, tier
                 {"role": "system", "content": "You are a concise, professional climate risk analyst. Write factual, data-driven briefings for insurance underwriters."},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=150,
-            temperature=0.4,
+            max_tokens=150, temperature=0.4,
         )
         return response.choices[0].message.content.strip()
-    except Exception as e:
+    except Exception:
         return generate_fallback_summary(area_name, score, features, tier)
 
 
-def generate_fallback_summary(area_name: str, score: float, features: dict, tier: str) -> str:
-    """Deterministic fallback summary without OpenAI."""
+def generate_fallback_summary(area_name, score, features, tier):
     tier_text = {
         "CRITICAL": "critical — immediate underwriting action required",
         "HIGH": "high — elevated loading factor recommended",
         "MEDIUM": "moderate — standard risk protocols apply",
         "LOW": "low — within acceptable risk parameters",
     }.get(tier, "moderate")
-
     return (
         f"{area_name} presents a {tier_text}, with a composite climate risk score of {score}/100. "
         f"Satellite-derived vegetation loss stands at {features['ndvi_drop']}%, indicating "
@@ -231,25 +339,167 @@ def generate_fallback_summary(area_name: str, score: float, features: dict, tier
     )
 
 
+# ─── Patch generation from real data ──────────────────────────────────────────
+
+def generate_all_patches() -> list:
+    """Generate 200 risk patches using real satellite data when available."""
+    use_real = climate_data_ready()
+    conn = get_db() if use_real else None
+
+    patches = []
+    patch_id = 1
+
+    for key, info in REGIONS.items():
+        base_features = None
+        region_trend = None
+
+        if conn:
+            base_features = real_features_for_region(conn, info["name"])
+            region_trend = get_region_trend_data(conn, info["name"])
+
+        if not base_features:
+            base_features = deterministic_features(
+                info["center_lat"], info["center_lon"])
+
+        base_score = compute_score(base_features)
+        rng = _seeded_random(info["center_lat"] * 1000 + info["center_lon"] * 100)
+
+        for area_name in info["areas"]:
+            lat_offset = (rng() - 0.5) * info["spread"] * 2
+            lon_offset = (rng() - 0.5) * info["spread"] * 2
+            lat = info["center_lat"] + lat_offset
+            lon = info["center_lon"] + lon_offset
+
+            raw_score = base_score + (rng() - 0.5) * 18
+            score = round(max(5, min(99, raw_score)))
+            tier = score_to_tier(score)
+            trend = "rising" if score > 65 else ("improving" if score < 35 else "stable")
+
+            factors = {
+                "ndvi_drop": round(min(95, max(5,
+                    base_features["ndvi_drop"] + (rng() - 0.5) * 10)), 1),
+                "temp_increase": round(min(4.5, max(0.3,
+                    base_features["temp_increase"] + (rng() - 0.5) * 0.5)), 2),
+                "land_stress": round(min(0.95, max(0.05,
+                    base_features["land_stress"] + (rng() - 0.5) * 0.1)), 3),
+                "asset_proximity": round(min(95, max(5,
+                    score * 0.6 + rng() * 30)), 1),
+            }
+
+            if region_trend and len(region_trend) >= 6:
+                trend_data = region_trend
+            else:
+                trend_data = generate_trend_data(score, lat, lon)
+
+            patches.append({
+                "id": f"patch-{patch_id:03d}",
+                "name": area_name,
+                "region": info["display_region"],
+                "cluster": info["name"],
+                "lat": round(lat, 4),
+                "lon": round(lon, 4),
+                "score": score,
+                "tier": tier,
+                "trend": trend,
+                "trendData": trend_data,
+                "factors": factors,
+                "real_data": use_real and base_features is not None,
+            })
+            patch_id += 1
+
+    if conn:
+        conn.close()
+    return patches
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": "1.0.0", "openai": OPENAI_AVAILABLE}
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "openai": OPENAI_AVAILABLE,
+        "climate_data": climate_data_ready(),
+    }
+
+
+@app.get("/api/regions")
+def get_regions():
+    """Return 200 risk patches across 10 Greek regions with real data scores."""
+    return generate_all_patches()
+
+
+@app.get("/api/regions/{region_id}/trends")
+def get_region_trends(region_id: str):
+    """Return detailed time series for a region."""
+    info = REGIONS.get(region_id)
+    if not info:
+        raise HTTPException(404, "Region not found")
+
+    conn = get_db()
+    try:
+        ndvi_rows = conn.execute("""
+            SELECT month, ROUND(AVG(NDVI), 4) AS ndvi,
+                   ROUND(AVG(NDMI), 4) AS ndmi,
+                   ROUND(AVG(BSI), 4) AS bsi
+            FROM sentinel2_features WHERE region = ?
+            GROUP BY month ORDER BY month
+        """, (info["name"],)).fetchall()
+
+        climate_rows = conn.execute("""
+            SELECT month,
+                   ROUND(AVG(temp_2m_C), 2) AS temp,
+                   ROUND(AVG(precip_mm_day), 3) AS precip,
+                   ROUND(AVG(soil_water_vol_m3m3), 4) AS soil_moisture
+            FROM era5_land_features WHERE region = ?
+            GROUP BY month ORDER BY month
+        """, (info["name"],)).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "region": info["name"],
+        "ndvi_trend": [
+            {"date": r["month"], "ndvi": r["ndvi"], "ndmi": r["ndmi"], "bsi": r["bsi"]}
+            for r in ndvi_rows
+        ],
+        "climate_trend": [
+            {"date": r["month"], "temp": r["temp"], "precip": r["precip"],
+             "soil_moisture": r["soil_moisture"]}
+            for r in climate_rows
+        ],
+    }
 
 
 @app.post("/api/score")
 async def score_area(req: ScoreRequest):
-    """Compute climate risk score for a lat/lon location."""
-    features = deterministic_features(req.lat, req.lon)
+    """Compute climate risk score — uses real data when available."""
+    region_key = nearest_region_key(req.lat, req.lon)
+    region_name = REGIONS[region_key]["name"] if region_key else "Unknown"
+
+    features = None
+    if climate_data_ready():
+        conn = get_db()
+        features = real_features_for_region(conn, region_name)
+        conn.close()
+
+    if not features:
+        features = deterministic_features(req.lat, req.lon)
+
     score = compute_score(features)
     tier = score_to_tier(score)
-    trend_data = generate_trend_data(score, req.lat, req.lon)
 
-    # Generate AI summary
+    trend_data_list = []
+    if climate_data_ready():
+        conn = get_db()
+        trend_data_list = get_region_trend_data(conn, region_name)
+        conn.close()
+    if not trend_data_list:
+        trend_data_list = generate_trend_data(score, req.lat, req.lon)
+
     summary = await generate_ai_summary(req.area_name, score, features, tier)
 
-    # Persist to DB
     snapshot_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
@@ -258,17 +508,8 @@ async def score_area(req: ScoreRequest):
         conn.execute(
             """INSERT INTO risk_snapshots (id, area_name, lat, lon, score, tier, factors, summary, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                snapshot_id,
-                req.area_name,
-                req.lat,
-                req.lon,
-                score,
-                tier,
-                json.dumps(features),
-                summary,
-                now,
-            ),
+            (snapshot_id, req.area_name, req.lat, req.lon, score, tier,
+             json.dumps(features), summary, now),
         )
         conn.commit()
     finally:
@@ -283,79 +524,60 @@ async def score_area(req: ScoreRequest):
         "tier": tier,
         "factors": features,
         "summary": summary,
-        "trend_data": trend_data,
+        "trend_data": trend_data_list,
         "created_at": now,
     }
 
 
 @app.post("/api/feedback")
 def submit_feedback(req: FeedbackRequest):
-    """Record underwriter feedback on a risk snapshot."""
     feedback_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-
     conn = get_db()
     try:
         conn.execute(
             """INSERT INTO underwriter_feedback (id, snapshot_id, action, override_score, reason, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                feedback_id,
-                req.snapshot_id,
-                req.action,
-                req.override_score,
-                req.reason,
-                now,
-            ),
+            (feedback_id, req.snapshot_id, req.action, req.override_score, req.reason, now),
         )
         conn.commit()
     finally:
         conn.close()
-
     return {"success": True, "feedback_id": feedback_id}
 
 
 @app.get("/api/feedback/stats")
 def feedback_stats():
-    """Return aggregated feedback statistics."""
     conn = get_db()
     try:
         rows = conn.execute("SELECT action, reason FROM underwriter_feedback").fetchall()
     finally:
         conn.close()
-
     total = len(rows)
     agrees = sum(1 for r in rows if r["action"] == "agree")
-    reasons = [r["reason"] for r in rows if r["reason"]]
-    reason_counts = {}
-    for r in reasons:
-        reason_counts[r] = reason_counts.get(r, 0) + 1
-
-    common_reasons = sorted(reason_counts.items(), key=lambda x: -x[1])[:5]
-
+    reason_counts: dict[str, int] = {}
+    for r in rows:
+        if r["reason"]:
+            reason_counts[r["reason"]] = reason_counts.get(r["reason"], 0) + 1
+    common = sorted(reason_counts.items(), key=lambda x: -x[1])[:5]
     return {
         "total_signals": total,
         "agree_rate": round(agrees / total * 100, 1) if total > 0 else 0,
-        "common_reasons": [{"reason": r, "count": c} for r, c in common_reasons],
+        "common_reasons": [{"reason": r, "count": c} for r, c in common],
     }
 
 
 @app.post("/api/assets/upload")
 async def upload_assets(file: UploadFile = File(...)):
-    """Parse uploaded CSV portfolio and store assets with proximity risk flags."""
     content = await file.read()
-    text = content.decode("utf-8-sig")  # handle BOM
-
+    text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     assets = []
     now = datetime.now(timezone.utc).isoformat()
 
-    # High-risk cluster centers (lat, lon) with radius in degrees (~km/111)
     HIGH_RISK_CENTERS = [
-        (39.6, 22.4, 0.45),   # Thessaly
-        (38.6, 23.6, 0.40),   # Evia
-        (36.2, 28.0, 0.30),   # Rhodes
-        (37.5, 22.3, 0.45),   # Arcadia
+        (39.6, 22.4, 0.45), (38.6, 23.6, 0.40),
+        (36.2, 28.0, 0.30), (37.5, 22.3, 0.45),
     ]
 
     conn = get_db()
@@ -368,89 +590,57 @@ async def upload_assets(file: UploadFile = File(...)):
                 value = float(row.get("value", 0))
             except (ValueError, TypeError):
                 continue
-
             if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 continue
-
-            # Proximity risk: within radius of any high-risk center
             prox_risk = 0
             for clat, clon, radius in HIGH_RISK_CENTERS:
-                dist = math.sqrt((lat - clat) ** 2 + (lon - clon) ** 2)
-                if dist <= radius:
+                if math.sqrt((lat - clat) ** 2 + (lon - clon) ** 2) <= radius:
                     prox_risk = 1
                     break
-
             asset_id = str(uuid.uuid4())
             conn.execute(
                 """INSERT INTO asset_portfolios (id, insurer_id, name, lat, lon, value, proximity_risk, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (asset_id, "default", name, lat, lon, value, prox_risk, now),
             )
-            assets.append({
-                "id": asset_id,
-                "name": name,
-                "lat": lat,
-                "lon": lon,
-                "value": value,
-                "proximity_risk": prox_risk,
-            })
+            assets.append({"id": asset_id, "name": name, "lat": lat, "lon": lon,
+                           "value": value, "proximity_risk": prox_risk})
         conn.commit()
     finally:
         conn.close()
 
-    # Return GeoJSON FeatureCollection
-    features = [
-        {
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [a["lon"], a["lat"]]},
-            "properties": {
-                "id": a["id"],
-                "name": a["name"],
-                "value": a["value"],
-                "proximity_risk": a["proximity_risk"],
-            },
-        }
+    feats = [
+        {"type": "Feature",
+         "geometry": {"type": "Point", "coordinates": [a["lon"], a["lat"]]},
+         "properties": {"id": a["id"], "name": a["name"], "value": a["value"],
+                        "proximity_risk": a["proximity_risk"]}}
         for a in assets
     ]
-
     return {
-        "type": "FeatureCollection",
-        "features": features,
-        "meta": {
-            "total": len(assets),
-            "high_risk_count": sum(1 for a in assets if a["proximity_risk"]),
-        },
+        "type": "FeatureCollection", "features": feats,
+        "meta": {"total": len(assets),
+                 "high_risk_count": sum(1 for a in assets if a["proximity_risk"])},
     }
 
 
 @app.get("/api/history")
 def get_history():
-    """Return last 50 risk snapshots with feedback status."""
     conn = get_db()
     try:
         snapshots = conn.execute(
-            """SELECT s.*, f.action
-               FROM risk_snapshots s
+            """SELECT s.*, f.action FROM risk_snapshots s
                LEFT JOIN underwriter_feedback f ON f.snapshot_id = s.id
                ORDER BY s.created_at DESC LIMIT 50"""
         ).fetchall()
     finally:
         conn.close()
-
     return {
         "snapshots": [
-            {
-                "id": row["id"],
-                "area_name": row["area_name"],
-                "lat": row["lat"],
-                "lon": row["lon"],
-                "score": row["score"],
-                "tier": row["tier"],
-                "factors": json.loads(row["factors"]) if row["factors"] else {},
-                "summary": row["summary"],
-                "created_at": row["created_at"],
-                "action": row["action"],
-            }
+            {"id": row["id"], "area_name": row["area_name"], "lat": row["lat"],
+             "lon": row["lon"], "score": row["score"], "tier": row["tier"],
+             "factors": json.loads(row["factors"]) if row["factors"] else {},
+             "summary": row["summary"], "created_at": row["created_at"],
+             "action": row["action"]}
             for row in snapshots
         ]
     }
@@ -458,26 +648,21 @@ def get_history():
 
 @app.get("/api/stats")
 def get_stats():
-    """Return dashboard statistics."""
     conn = get_db()
     try:
-        snap_row = conn.execute(
-            "SELECT COUNT(*) as cnt, AVG(score) as avg, SUM(CASE WHEN score >= 76 THEN 1 ELSE 0 END) as crit FROM risk_snapshots"
+        snap = conn.execute(
+            "SELECT COUNT(*) as cnt, AVG(score) as avg, "
+            "SUM(CASE WHEN score >= 76 THEN 1 ELSE 0 END) as crit "
+            "FROM risk_snapshots"
         ).fetchone()
-        fb_row = conn.execute("SELECT COUNT(*) as cnt FROM underwriter_feedback").fetchone()
+        fb = conn.execute("SELECT COUNT(*) as cnt FROM underwriter_feedback").fetchone()
     finally:
         conn.close()
-
-    total = snap_row["cnt"] or 200
-    avg = round(snap_row["avg"] or 48.5, 1)
-    critical = snap_row["crit"] or 30
-    feedback = fb_row["cnt"] or 0
-
     return {
-        "total_snapshots": total,
-        "avg_score": avg,
-        "critical_count": critical,
-        "feedback_count": feedback,
+        "total_snapshots": snap["cnt"] or 200,
+        "avg_score": round(snap["avg"] or 48.5, 1),
+        "critical_count": snap["crit"] or 30,
+        "feedback_count": fb["cnt"] or 0,
     }
 
 
@@ -488,14 +673,12 @@ def generate_pdf_report(
     summary: str = Query(""),
     snapshot_id: str = Query("N/A"),
 ):
-    """Generate a formatted PDF risk report for download."""
     if not FPDF_AVAILABLE:
         raise HTTPException(status_code=500, detail="PDF generation not available")
 
     tier = score_to_tier(score)
-    features = deterministic_features(0, 0)  # fallback — ideally pass lat/lon
+    features = deterministic_features(0, 0)
 
-    # Fetch from DB if we have snapshot_id
     conn = get_db()
     try:
         row = conn.execute(
@@ -508,41 +691,32 @@ def generate_pdf_report(
     finally:
         conn.close()
 
-    # Build PDF
     pdf = FPDF()
     pdf.add_page()
 
-    # ── Header ──────────────────────────────────────────────────────────────
     pdf.set_fill_color(10, 15, 30)
     pdf.rect(0, 0, 210, 40, "F")
-
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(0, 212, 170)
     pdf.set_xy(15, 12)
     pdf.cell(0, 10, "EarthRisk AI", ln=False)
-
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(180, 190, 210)
     pdf.set_xy(70, 14)
     pdf.cell(0, 8, "Climate Risk Intelligence Report", ln=False)
-
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(120, 130, 150)
     pdf.set_xy(15, 28)
     pdf.cell(0, 5, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}  |  Snapshot: {snapshot_id[:18]}...")
 
-    # ── Score Section ────────────────────────────────────────────────────────
     pdf.set_xy(0, 42)
     pdf.set_fill_color(20, 30, 50)
     pdf.rect(0, 42, 210, 35, "F")
-
-    # Area name
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(255, 255, 255)
     pdf.set_xy(15, 48)
     pdf.cell(130, 10, area_name, ln=False)
 
-    # Score badge
     score_color = (
         (239, 68, 68) if tier == "CRITICAL"
         else (245, 158, 11) if tier == "HIGH"
@@ -559,7 +733,6 @@ def generate_pdf_report(
     pdf.set_xy(155, 59)
     pdf.cell(40, 5, tier, align="C")
 
-    # ── Factor Table ─────────────────────────────────────────────────────────
     pdf.set_xy(15, 85)
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(0, 212, 170)
@@ -574,7 +747,6 @@ def generate_pdf_report(
         ["Asset Proximity Score", f"{features['asset_proximity']}%", "20%", f"{round(features['asset_proximity'] * 0.2, 1)}"],
     ]
 
-    # Header row
     pdf.set_fill_color(30, 41, 59)
     pdf.set_text_color(150, 165, 190)
     pdf.set_font("Helvetica", "B", 9)
@@ -582,7 +754,6 @@ def generate_pdf_report(
         pdf.cell(col_w[i], 8, h, border=0, fill=True, align="L")
     pdf.ln()
 
-    # Data rows
     for j, row_data in enumerate(data):
         pdf.set_fill_color(18, 26, 44 if j % 2 == 0 else 22, 33, 56)
         pdf.set_text_color(200, 210, 230)
@@ -591,53 +762,42 @@ def generate_pdf_report(
             pdf.cell(col_w[i], 7, str(cell), border=0, fill=True, align="L")
         pdf.ln()
 
-    # ── AI Summary ───────────────────────────────────────────────────────────
     pdf.ln(6)
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(0, 212, 170)
     pdf.cell(0, 8, "AI RISK BRIEFING", ln=True)
-
     pdf.set_fill_color(10, 20, 40)
     pdf.set_text_color(200, 210, 230)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_x(15)
-
     summary_text = summary or generate_fallback_summary(area_name, score, features, tier)
-    # Wrap long summary
     pdf.multi_cell(180, 6, summary_text, fill=True)
 
-    # ── Methodology Note ────────────────────────────────────────────────────
     pdf.ln(6)
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(0, 212, 170)
     pdf.cell(0, 8, "METHODOLOGY", ln=True)
-
     pdf.set_text_color(140, 155, 180)
     pdf.set_font("Helvetica", "", 9)
     pdf.multi_cell(
         180, 5,
-        "Risk score computed via weighted composite formula: Score = 0.30×VegetationLoss + 0.25×TempIncrease + "
-        "0.25×LandStress + 0.20×AssetProximity, normalised to 0-100. Vegetation loss derived from Sentinel-2 "
-        "NDVI time series (2019-2024). Temperature anomaly from ERA5 reanalysis vs 2000-2020 baseline. "
-        "Land stress from soil moisture and evapotranspiration indices. AI briefing generated by GPT-4o-mini.",
+        "Risk score computed via weighted composite formula: Score = 0.30*VegetationLoss + 0.25*TempIncrease + "
+        "0.25*LandStress + 0.20*AssetProximity, normalised to 0-100. Vegetation loss derived from Sentinel-2 "
+        "NDVI time series (2015-2025). Temperature anomaly from ERA5 reanalysis vs 2015-2019 baseline. "
+        "Land stress from soil moisture indices. AI briefing generated by GPT-4o-mini.",
     )
 
-    # ── Footer ───────────────────────────────────────────────────────────────
     pdf.set_y(-20)
     pdf.set_fill_color(10, 15, 30)
     pdf.rect(0, pdf.get_y() - 2, 210, 25, "F")
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(80, 100, 130)
-    pdf.cell(
-        0, 6,
-        f"EarthRisk AI v1.0  ·  Snapshot ID: {snapshot_id}  ·  Regulatory Audit Trail  ·  IBM Hackathon 2026",
-        align="C",
-    )
+    pdf.cell(0, 6,
+             f"EarthRisk AI v2.0  ·  Snapshot ID: {snapshot_id}  ·  Regulatory Audit Trail  ·  IBM Hackathon 2026",
+             align="C")
 
-    # Output
     pdf_bytes = bytes(pdf.output())
     filename = f"earthrisk-{area_name.replace(' ', '-').lower()}.pdf"
-
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",

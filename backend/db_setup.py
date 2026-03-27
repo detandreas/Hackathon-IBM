@@ -1,7 +1,7 @@
 """
 Climate Risk MVP - Database Setup
-Creates an SQLite database from the downloaded CSV data,
-with proper schema, indexes, and useful views.
+Creates a unified SQLite database with climate data tables,
+application tables (snapshots, feedback, portfolios), and views.
 """
 
 import os
@@ -27,6 +27,7 @@ def create_tables(conn: sqlite3.Connection):
             item_id         TEXT PRIMARY KEY,
             datetime        TEXT NOT NULL,
             month           TEXT NOT NULL,
+            region          TEXT NOT NULL,
             mgrs_tile       TEXT,
             cloud_cover_pct REAL,
             B02_blue        REAL,
@@ -45,6 +46,7 @@ def create_tables(conn: sqlite3.Connection):
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             time                TEXT NOT NULL,
             month               TEXT NOT NULL,
+            region              TEXT NOT NULL,
             latitude            REAL NOT NULL,
             longitude           REAL NOT NULL,
             soil_water_vol_m3m3 REAL,
@@ -54,17 +56,53 @@ def create_tables(conn: sqlite3.Connection):
             precip_mm_day       REAL
         );
 
-        CREATE INDEX idx_sentinel_month ON sentinel2_features(month);
-        CREATE INDEX idx_era5_month     ON era5_land_features(month);
-        CREATE INDEX idx_era5_coords    ON era5_land_features(latitude, longitude);
-        CREATE INDEX idx_era5_time      ON era5_land_features(time);
+        -- App tables (snapshots, feedback, portfolios)
+        CREATE TABLE IF NOT EXISTS risk_snapshots (
+            id TEXT PRIMARY KEY,
+            area_name TEXT,
+            lat REAL,
+            lon REAL,
+            score REAL,
+            tier TEXT,
+            factors TEXT,
+            summary TEXT,
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS underwriter_feedback (
+            id TEXT PRIMARY KEY,
+            snapshot_id TEXT,
+            action TEXT,
+            override_score REAL,
+            reason TEXT,
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS asset_portfolios (
+            id TEXT PRIMARY KEY,
+            insurer_id TEXT,
+            name TEXT,
+            lat REAL,
+            lon REAL,
+            value REAL,
+            proximity_risk INTEGER,
+            created_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sentinel_month  ON sentinel2_features(month);
+        CREATE INDEX IF NOT EXISTS idx_sentinel_region ON sentinel2_features(region);
+        CREATE INDEX IF NOT EXISTS idx_era5_month      ON era5_land_features(month);
+        CREATE INDEX IF NOT EXISTS idx_era5_region     ON era5_land_features(region);
+        CREATE INDEX IF NOT EXISTS idx_era5_coords     ON era5_land_features(latitude, longitude);
+        CREATE INDEX IF NOT EXISTS idx_era5_time       ON era5_land_features(time);
     """)
 
 
 def create_views(conn: sqlite3.Connection):
     conn.executescript("""
-        CREATE VIEW monthly_climate_summary AS
+        CREATE VIEW IF NOT EXISTS monthly_climate_summary AS
         SELECT
+            region,
             month,
             ROUND(AVG(temp_2m_C), 2)           AS avg_temp_C,
             ROUND(MAX(temp_2m_C), 2)           AS max_temp_C,
@@ -73,11 +111,12 @@ def create_views(conn: sqlite3.Connection):
             ROUND(AVG(skin_temp_C), 2)         AS avg_skin_temp_C,
             COUNT(*)                            AS n_grid_points
         FROM era5_land_features
-        GROUP BY month
-        ORDER BY month;
+        GROUP BY region, month
+        ORDER BY region, month;
 
-        CREATE VIEW sentinel_yearly_trend AS
+        CREATE VIEW IF NOT EXISTS sentinel_yearly_trend AS
         SELECT
+            region,
             SUBSTR(month, 1, 4)                AS year,
             SUBSTR(month, 6, 2)                AS mon,
             ROUND(AVG(NDVI), 4)                AS avg_NDVI,
@@ -86,8 +125,8 @@ def create_views(conn: sqlite3.Connection):
             ROUND(AVG(cloud_cover_pct), 2)     AS avg_cloud,
             COUNT(*)                            AS n_scenes
         FROM sentinel2_features
-        GROUP BY year, mon
-        ORDER BY year, mon;
+        GROUP BY region, year, mon
+        ORDER BY region, year, mon;
     """)
 
 
@@ -101,12 +140,10 @@ def main():
     sep = "=" * 60
 
     print(sep)
-    print("  Climate Risk MVP — Database Setup")
+    print("  Climate Risk MVP -- Unified Database Setup")
     print(sep)
 
-    if not os.path.exists(SENTINEL_CSV) or not os.path.exists(ERA5_CSV):
-        print("\n  CSV files not found. Run data_download.py first.")
-        return
+    os.makedirs(DATA_DIR, exist_ok=True)
 
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
@@ -114,44 +151,53 @@ def main():
 
     conn = sqlite3.connect(DB_PATH)
 
-    print("\n  [1/4] Creating tables + indexes…")
+    print("\n  [1/4] Creating tables + indexes...")
     create_tables(conn)
 
-    print("  [2/4] Loading sentinel2_features…")
-    n_s2 = load_csv(conn, SENTINEL_CSV, "sentinel2_features")
-    print(f"         → {n_s2} rows inserted")
+    has_sentinel = os.path.exists(SENTINEL_CSV)
+    has_era5 = os.path.exists(ERA5_CSV)
 
-    print("  [3/4] Loading era5_land_features…")
-    n_era5 = load_csv(conn, ERA5_CSV, "era5_land_features")
-    print(f"         → {n_era5} rows inserted")
+    n_s2 = 0
+    if has_sentinel:
+        print("  [2/4] Loading sentinel2_features...")
+        n_s2 = load_csv(conn, SENTINEL_CSV, "sentinel2_features")
+        print(f"         -> {n_s2} rows inserted")
+    else:
+        print("  [2/4] sentinel2_features.csv not found, skipping.")
 
-    print("  [4/4] Creating views…")
+    n_era5 = 0
+    if has_era5:
+        print("  [3/4] Loading era5_land_features...")
+        n_era5 = load_csv(conn, ERA5_CSV, "era5_land_features")
+        print(f"         -> {n_era5} rows inserted")
+    else:
+        print("  [3/4] era5_land_features.csv not found, skipping.")
+
+    print("  [4/4] Creating views...")
     create_views(conn)
 
     conn.commit()
 
-    # ── Verification queries ────────────────────────────────────
-    print(f"\n{'-' * 60}")
-    print("  Verification queries:\n")
+    if n_s2 > 0 or n_era5 > 0:
+        print(f"\n{'-' * 60}")
+        print("  Verification:\n")
 
-    print("  ── Sentinel-2: scenes per year ──")
-    df = pd.read_sql_query("""
-        SELECT SUBSTR(month,1,4) AS year, COUNT(*) AS scenes
-        FROM sentinel2_features GROUP BY year ORDER BY year
-    """, conn)
-    print(df.to_string(index=False))
+        if n_s2 > 0:
+            df = pd.read_sql_query("""
+                SELECT region, COUNT(*) AS scenes
+                FROM sentinel2_features GROUP BY region ORDER BY region
+            """, conn)
+            print("  Sentinel-2 scenes per region:")
+            print(df.to_string(index=False))
 
-    print("\n  ── ERA5-Land: monthly climate summary (sample) ──")
-    df = pd.read_sql_query("""
-        SELECT * FROM monthly_climate_summary LIMIT 12
-    """, conn)
-    print(df.to_string(index=False))
-
-    print("\n  ── Sentinel-2: yearly NDVI trend ──")
-    df = pd.read_sql_query("""
-        SELECT * FROM sentinel_yearly_trend
-    """, conn)
-    print(df.to_string(index=False))
+        if n_era5 > 0:
+            df = pd.read_sql_query("""
+                SELECT region, COUNT(*) AS rows,
+                       ROUND(AVG(temp_2m_C),1) AS avg_temp
+                FROM era5_land_features GROUP BY region ORDER BY region
+            """, conn)
+            print("\n  ERA5-Land rows per region:")
+            print(df.to_string(index=False))
 
     conn.close()
 
@@ -159,10 +205,8 @@ def main():
     print(f"\n{sep}")
     print(f"  Database: {DB_PATH}")
     print(f"  Size:     {db_size:.1f} KB")
-    print(f"  Tables:   sentinel2_features ({n_s2} rows)")
-    print(f"            era5_land_features ({n_era5} rows)")
-    print(f"  Views:    monthly_climate_summary")
-    print(f"            sentinel_yearly_trend")
+    print(f"  Climate:  sentinel2 ({n_s2}), era5 ({n_era5})")
+    print(f"  App:      risk_snapshots, underwriter_feedback, asset_portfolios")
     print(sep)
 
 

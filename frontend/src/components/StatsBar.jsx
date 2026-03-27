@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { greecePatches } from "../data/greeceData";
 
 const DEFAULT_STATS = {
   total_snapshots: 200,
-  avg_score: Math.round(greecePatches.reduce((s, p) => s + p.score, 0) / greecePatches.length),
-  critical_count: greecePatches.filter((p) => p.score >= 76).length,
+  avg_score: 49,
+  critical_count: 30,
   feedback_count: 0,
 };
 

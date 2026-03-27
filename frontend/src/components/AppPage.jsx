@@ -1,21 +1,13 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import GreeceMap from "./GreeceMap";
 import ScorePanel from "./ScorePanel";
 import StatsBar from "./StatsBar";
 import PortfolioUploader from "./PortfolioUploader";
 import HistoryDrawer from "./HistoryDrawer";
-import { greecePatches } from "../data/greeceData";
-
-// Top 5 highest-scoring patches for priority queue
-const TOP5 = [...greecePatches]
-  .sort((a, b) => b.score - a.score)
-  .slice(0, 5);
-
-const CRITICAL_COUNT = greecePatches.filter((p) => p.score >= 76).length;
 
 // ── Priority Queue panel ───────────────────────────────────────────────────────
-function PriorityQueue({ onAssess, onClose }) {
+function PriorityQueue({ top5, criticalCount, onAssess, onClose }) {
   return (
     <div
       className="absolute top-0 right-0 bottom-0 z-30 flex flex-col"
@@ -27,7 +19,6 @@ function PriorityQueue({ onAssess, onClose }) {
         backdropFilter: "blur(16px)",
       }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
         <div>
           <div className="text-xs text-[#EF4444]/70 font-mono uppercase tracking-widest mb-0.5">
@@ -43,7 +34,6 @@ function PriorityQueue({ onAssess, onClose }) {
         </button>
       </div>
 
-      {/* IBM watsonx tag */}
       <div className="px-4 py-2 border-b border-white/5 flex-shrink-0">
         <div
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold"
@@ -53,9 +43,8 @@ function PriorityQueue({ onAssess, onClose }) {
         </div>
       </div>
 
-      {/* Zone list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {TOP5.map((patch, i) => {
+        {top5.map((patch, i) => {
           const tierColor = patch.score >= 76 ? "#EF4444" : patch.score >= 51 ? "#F59E0B" : "#00D4AA";
           const trendArrow = patch.trend === "rising" ? "↑" : patch.trend === "improving" ? "↓" : "→";
           const trendColor = patch.trend === "rising" ? "#EF4444" : patch.trend === "improving" ? "#00D4AA" : "#EAB308";
@@ -65,29 +54,22 @@ function PriorityQueue({ onAssess, onClose }) {
               className="flex items-center gap-3 p-3 rounded-xl transition-all hover:bg-white/5"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
             >
-              {/* Rank */}
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0"
                 style={{ background: `${tierColor}20`, color: tierColor }}
               >
                 {i + 1}
               </div>
-
-              {/* Zone info */}
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-white truncate">{patch.name}</div>
                 <div className="text-[10px] text-white/35 truncate">{patch.region}</div>
               </div>
-
-              {/* Score + trend */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-sm font-bold font-mono" style={{ color: tierColor }}>
                   {patch.score}
                 </span>
                 <span className="text-sm font-bold" style={{ color: trendColor }}>{trendArrow}</span>
               </div>
-
-              {/* Assess button */}
               <button
                 onClick={() => { onAssess(patch); onClose(); }}
                 className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all hover:scale-105 active:scale-95 flex-shrink-0"
@@ -106,7 +88,7 @@ function PriorityQueue({ onAssess, onClose }) {
 
       <div className="px-4 py-3 border-t border-white/5 flex-shrink-0">
         <div className="text-[10px] text-white/25 text-center">
-          Showing top 5 of {CRITICAL_COUNT} critical zones · Updated real-time
+          Showing top 5 of {criticalCount} critical zones · Updated real-time
         </div>
       </div>
     </div>
@@ -170,12 +152,29 @@ function DemoHintBar() {
 // ── Main App Page ─────────────────────────────────────────────────────────────
 export default function AppPage() {
   const navigate = useNavigate();
+  const [patches, setPatches] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedPatch, setSelectedPatch] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [assetPins, setAssetPins] = useState([]);
   const [feedbackCount, setFeedbackCount] = useState(0);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/regions")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPatches(data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const top5 = [...patches].sort((a, b) => b.score - a.score).slice(0, 5);
+  const criticalCount = patches.filter((p) => p.score >= 76).length;
 
   const handlePatchClick = useCallback((patch) => {
     setSelectedPatch(patch);
@@ -197,7 +196,6 @@ export default function AppPage() {
     setAssetPins(assets);
   }, []);
 
-  // FIX 4 — Critical alert: shown when selected patch score > 80 and not dismissed
   const showCriticalAlert = selectedPatch && selectedPatch.score > 80 && !alertDismissed;
 
   return (
@@ -211,7 +209,6 @@ export default function AppPage() {
           backdropFilter: "blur(12px)",
         }}
       >
-        {/* Logo */}
         <div className="flex items-center gap-2.5 px-4 py-3 cursor-pointer" onClick={() => navigate("/")}>
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00D4AA] to-[#00a882] flex items-center justify-center shadow-md shadow-[#00D4AA]/20">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -231,24 +228,20 @@ export default function AppPage() {
           </div>
         </div>
 
-        {/* Stats bar center */}
         <div className="flex-1 flex justify-center overflow-hidden">
           <StatsBar refreshTrigger={feedbackCount} />
         </div>
 
-        {/* Right actions */}
         <div className="flex items-center gap-2 px-4">
-          {/* FIX 4 — Critical zones dot indicator */}
           <div className="hidden md:flex items-center gap-1.5 text-xs text-white/30">
             <span
               className="w-2 h-2 rounded-full bg-[#EF4444] flex-shrink-0"
               style={{ boxShadow: "0 0 5px #EF4444", animation: "pulse 1.5s infinite" }}
             />
-            <span className="text-[#EF4444]/70 font-semibold">{CRITICAL_COUNT}</span>
+            <span className="text-[#EF4444]/70 font-semibold">{criticalCount}</span>
             <span>critical</span>
           </div>
 
-          {/* FIX 5 — Top Risk Zones button */}
           <button
             onClick={() => { setPriorityOpen((o) => !o); setPanelOpen(false); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105"
@@ -264,7 +257,7 @@ export default function AppPage() {
               className="text-[10px] px-1.5 py-0.5 rounded-full font-black"
               style={{ background: "rgba(239,68,68,0.2)" }}
             >
-              {CRITICAL_COUNT}
+              {criticalCount}
             </span>
           </button>
 
@@ -274,7 +267,6 @@ export default function AppPage() {
         </div>
       </header>
 
-      {/* FIX 4 — CRITICAL ALERT BANNER (score > 80) */}
       {showCriticalAlert && (
         <div
           className="flex-shrink-0 flex items-center justify-between px-5 py-2 z-20"
@@ -284,10 +276,7 @@ export default function AppPage() {
           }}
         >
           <div className="flex items-center gap-2.5">
-            <span
-              className="text-xs font-black text-[#EF4444] flex-shrink-0"
-              style={{ filter: "drop-shadow(0 0 4px #EF4444)" }}
-            >
+            <span className="text-xs font-black text-[#EF4444] flex-shrink-0" style={{ filter: "drop-shadow(0 0 4px #EF4444)" }}>
               ⚠
             </span>
             <span className="text-xs font-semibold text-[#EF4444]">
@@ -305,18 +294,18 @@ export default function AppPage() {
 
       {/* ── Main content area ────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Map */}
         <div
           className="flex-1 relative transition-all duration-500"
           style={{ marginRight: (panelOpen && !priorityOpen) ? "400px" : priorityOpen ? "340px" : "0" }}
         >
           <GreeceMap
+            patches={patches}
             onPatchClick={handlePatchClick}
             assetPins={assetPins}
             selectedPatch={selectedPatch}
           />
 
-          {!selectedPatch && !priorityOpen && (
+          {!selectedPatch && !priorityOpen && !loading && (
             <div
               className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs text-white/50 pointer-events-none animate-pulse"
               style={{
@@ -329,17 +318,24 @@ export default function AppPage() {
               Click any risk zone to open assessment
             </div>
           )}
+
+          {loading && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full text-xs text-[#00D4AA]/60 pointer-events-none animate-pulse"
+              style={{ background: "rgba(10,15,30,0.7)", border: "1px solid rgba(0,212,170,0.15)", backdropFilter: "blur(8px)" }}>
+              Loading risk data from satellite pipeline...
+            </div>
+          )}
         </div>
 
-        {/* FIX 5 — Priority Queue panel (replaces/alongside score panel) */}
         {priorityOpen && (
           <PriorityQueue
+            top5={top5}
+            criticalCount={criticalCount}
             onAssess={handlePatchClick}
             onClose={() => setPriorityOpen(false)}
           />
         )}
 
-        {/* Score Panel */}
         {panelOpen && selectedPatch && !priorityOpen && (
           <ScorePanel
             patch={selectedPatch}
@@ -349,9 +345,7 @@ export default function AppPage() {
         )}
       </div>
 
-      {/* FIX 6 — Demo guide hint bar */}
       <DemoHintBar />
-
       <PortfolioUploader onAssetsLoaded={handleAssetsLoaded} />
       <HistoryDrawer refreshTrigger={feedbackCount} />
     </div>
