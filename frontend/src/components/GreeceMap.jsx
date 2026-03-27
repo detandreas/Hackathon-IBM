@@ -468,7 +468,18 @@ export default function GreeceMap({ patches = [], onPatchClick, assetPins = [], 
           backdropFilter: "blur(12px)",
         }}
       >
-        <div className="h-12" /> {/* Spacer for hamburger button */}
+        {/* Close button */}
+        <div className="flex justify-end pb-2">
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
         {/* ── Map Mode Toggle (Mobile) ────────────────────────────────── */}
         <div className="flex flex-col gap-2">
