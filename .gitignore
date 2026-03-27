@@ -1,34 +1,69 @@
-climate_risk_architecture_243e8854.plan.md
-climate_risk_mvp_proposal.md
-
-# Python caches
+# ── Python ───────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
 
-# Virtual environments
+# ── Virtual environments ────────────────────
 .venv/
 venv/
 env/
+ENV/
+hackathon/
 
-# Build / packaging
+# ── Build / packaging ───────────────────────
 build/
 dist/
-*.egg-info/
+.output/
 
-# Tooling caches
+# ── Node / Frontend ─────────────────────────
+node_modules/
+frontend/dist/
+.pnp
+.pnp.js
+
+# ── Databases ────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Generated data ──────────────────────────
+backend/data/*.csv
+backend/data/*.parquet
+
+# ── Environment / secrets ────────────────────
+.env
+.env.*
+
+# ── Logs ─────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ── Editor / OS ──────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Tooling caches ──────────────────────────
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage/
+.cache/
 
-# Editor / OS
-.DS_Store
-.vscode/
-.idea/
+# ── Deploy ───────────────────────────────────
+.vercel/
 
-# Environment / secrets
-.env
-.env.*
-
+# ── Misc ─────────────────────────────────────
+*.pem
+.claude/
