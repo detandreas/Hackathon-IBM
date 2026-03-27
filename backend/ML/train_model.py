@@ -39,7 +39,8 @@ print(f"Merged columns: {merged.columns.tolist()}")
 print(f"Missing values:\n{merged.isnull().sum()}")
 
 # Drop rows with too many missing values
-merged = merged.dropna(thresh=merged.shape[1] * 0.5)
+#merged = merged.dropna(thresh=merged.shape[1] * 0.9)
+merged = merged.dropna(thresh= 0.9)
 
 print(f"\nAfter dropping sparse rows: {merged.shape}")
 
