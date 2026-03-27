@@ -394,15 +394,22 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
       <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onClose} />
 
       <div
-        className={`fixed right-0 top-0 bottom-0 w-full md:w-[400px] z-40 flex flex-col transition-transform duration-500 ease-out ${
-          visible ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed z-40 flex flex-col transition-transform duration-500 ease-out
+          bottom-0 left-0 right-0 w-full h-screen
+          md:right-0 md:top-0 md:bottom-0 md:left-auto md:w-[400px] md:h-auto
+          ${visible ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full"}`}
         style={{
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
           borderLeft: "1px solid rgba(0,212,170,0.15)",
+          borderTop: "1px solid rgba(0,212,170,0.15)",
           boxShadow: "-20px 0 60px rgba(0,0,0,0.6)",
+          borderRadius: "16px 16px 0 0",
         }}
       >
+        {/* Drag handle for bottom sheet (mobile only) */}
+        <div className="md:hidden flex justify-center py-2">
+          <div className="w-12 h-1 bg-white/20 rounded-full" />
+        </div>
         {/* Toast */}
         {toast && (
           <div className="absolute top-4 left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white text-center"
@@ -498,7 +505,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex-1 py-2.5 text-xs font-semibold transition-all"
+                className={`flex-1 py-2.5 text-xs font-semibold transition-all ${tab.id === "change-detection" ? "hidden md:flex" : "flex"}`}
                 style={{
                   color: activeTab === tab.id ? "#00D4AA" : "rgba(255,255,255,0.35)",
                   borderBottom: activeTab === tab.id ? "2px solid #00D4AA" : "2px solid transparent",
