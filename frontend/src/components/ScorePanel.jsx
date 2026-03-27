@@ -423,19 +423,18 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
     <>
       <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onClose} />
 
-      {/* Desktop (≥768px): Right sidebar | Tablet (375-768px): Bottom sheet | Phone (<375px): Full screen */}
+      {/* Desktop (≥768px): Right sidebar — md:left-auto clears sm:left-0 so panel anchors to right, not left */}
+      {/* sm: Bottom sheet | default: Full screen */}
       <div
-        className={`fixed z-40 flex flex-col transition-all ${isDragging ? "duration-0" : "duration-500"} ease-out
-          w-full h-screen sm:w-full sm:h-auto sm:bottom-0 sm:left-0 sm:right-0 sm:max-h-[65vh] md:h-screen md:right-0 md:top-0 md:bottom-0 md:w-[400px]
+        className={`fixed z-40 flex flex-col transition-all duration-500 ease-out
+          w-full h-screen rounded-none border-t border-[rgba(0,212,170,0.15)]
+          sm:w-full sm:h-auto sm:bottom-0 sm:left-0 sm:right-0 sm:max-h-[65vh] sm:rounded-t-2xl
+          md:left-auto md:right-0 md:top-0 md:bottom-0 md:h-screen md:w-[400px] md:max-h-none md:rounded-none md:rounded-tl-2xl
+          md:border-t-0 md:border-l md:border-[rgba(0,212,170,0.15)]
           ${visible ? "translate-y-0 sm:translate-y-0 md:translate-x-0" : "translate-y-full sm:translate-y-full md:translate-x-full"}`}
         style={{
           background: "linear-gradient(180deg, #0f1829 0%, #0A0F1E 100%)",
-          borderLeft: "1px solid rgba(0,212,170,0.15)",
-          borderTop: "1px solid rgba(0,212,170,0.15)",
           boxShadow: "-20px 0 60px rgba(0,0,0,0.6)",
-          borderRadius: "16px 16px 0 0",
-          transform: `translateY(${swipeY}px)`,
-          opacity: isDragging ? Math.max(0.7, 1 - swipeY / 300) : 1,
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
