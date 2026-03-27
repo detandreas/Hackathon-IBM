@@ -285,42 +285,12 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [swipeY, setSwipeY] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
   const snapshotIdRef = useRef(null);
-  const dragStartY = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 10);
     return () => clearTimeout(t);
   }, []);
-
-  // Swipe-to-dismiss handlers (mobile only)
-  const handleTouchStart = (e) => {
-    if (window.innerWidth >= 640) return; // only on mobile
-    dragStartY.current = e.touches[0].clientY;
-    setIsDragging(true);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!dragStartY.current || window.innerWidth >= 640) return;
-    const currentY = e.touches[0].clientY;
-    const diff = currentY - dragStartY.current;
-    if (diff > 0) {
-      setSwipeY(diff);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (!dragStartY.current) return;
-    dragStartY.current = null;
-    setIsDragging(false);
-    if (swipeY > 80) {
-      onClose();
-    } else {
-      setSwipeY(0);
-    }
-  };
 
   useEffect(() => {
     if (!patch) return;
@@ -425,7 +395,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
 
       {/* Desktop (≥768px): Right sidebar | Tablet (375-768px): Bottom sheet | Phone (<375px): Full screen */}
       <div
-        className={`fixed z-40 flex flex-col transition-all ${isDragging ? "duration-0" : "duration-500"} ease-out
+        className={`fixed z-40 flex flex-col transition-all duration-500 ease-out
           w-full h-screen sm:w-full sm:h-auto sm:bottom-0 sm:left-0 sm:right-0 sm:max-h-[65vh] md:h-screen md:right-0 md:top-0 md:bottom-0 md:w-[400px]
           ${visible ? "translate-y-0 sm:translate-y-0 md:translate-x-0" : "translate-y-full sm:translate-y-full md:translate-x-full"}`}
         style={{
@@ -434,12 +404,7 @@ export default function ScorePanel({ patch, onClose, onFeedbackSubmit }) {
           borderTop: "1px solid rgba(0,212,170,0.15)",
           boxShadow: "-20px 0 60px rgba(0,0,0,0.6)",
           borderRadius: "16px 16px 0 0",
-          transform: `translateY(${swipeY}px)`,
-          opacity: isDragging ? Math.max(0.7, 1 - swipeY / 300) : 1,
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         {/* Drag handle for bottom sheet (mobile only) */}
         <div className="sm:block md:hidden flex justify-center py-2">
