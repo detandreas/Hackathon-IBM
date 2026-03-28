@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: hackathon-ibm
+    runtime: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: npx serve -s frontend/dist -l 3000
+    envVars:
+      - key: NODE_ENV
+        value: production
